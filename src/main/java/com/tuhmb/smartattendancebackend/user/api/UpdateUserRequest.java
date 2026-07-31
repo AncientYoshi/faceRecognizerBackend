@@ -1,0 +1,21 @@
+package com.tuhmb.smartattendancebackend.user.api;
+
+import com.tuhmb.smartattendancebackend.user.domain.RoleName;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
+
+import java.util.Set;
+
+public record UpdateUserRequest(
+        @NotBlank @Email @Size(max = 320) String email,
+        @Size(min = 8, max = 200) String password,
+        @NotBlank @Size(max = 100) String firstName,
+        @NotBlank @Size(max = 100) String lastName,
+        boolean enabled,
+        @NotEmpty Set<RoleName> roles,
+        @Size(max = 80) String studentNumber,
+        @Size(max = 80) String employeeNumber
+) {
+}

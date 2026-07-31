@@ -1,0 +1,154 @@
+package com.tuhmb.smartattendancebackend.attendance.service;
+
+import com.tuhmb.smartattendancebackend.audit.domain.AuditAction;
+import com.tuhmb.smartattendancebackend.audit.service.AuditService;
+import com.tuhmb.smartattendancebackend.academic.domain.Course;
+import com.tuhmb.smartattendancebackend.academic.service.AcademicAccessService;
+import com.tuhmb.smartattendancebackend.academic.service.CourseService;
+import com.tuhmb.smartattendancebackend.attendance.api.AttendanceSessionRequest;
+import com.tuhmb.smartattendancebackend.attendance.api.AttendanceSessionResponse;
+import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSession;
+import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSessionStatus;
+import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
+import com.tuhmb.smartattendancebackend.common.api.PageResponse;
+import com.tuhmb.smartattendancebackend.common.exception.ConflictException;
+import com.tuhmb.smartattendancebackend.common.exception.ResourceNotFoundException;
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+public class AttendanceSessionService {
+
+    private final AttendanceSessionRepository sessionRepository;
+    private final CourseService courseService;
+    private final AcademicAccessService accessService;
+    private final AuditService auditService;
+
+    public AttendanceSessionService(
+            AttendanceSessionRepository sessionRepository,
+            CourseService courseService,
+            AcademicAccessService accessService,
+            AuditService auditService
+    ) {
+        this.sessionRepository = sessionRepository;
+        this.courseService = courseService;
+        this.accessService = accessService;
+        this.auditService = auditService;
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<AttendanceSessionResponse> search(
+            UUID courseId,
+            UUID teacherId,
+            LocalDate date,
+            AttendanceSessionStatus status,
+            int page,
+            int size
+    ) {
+        Specification<AttendanceSession> specification = (root, ignored, builder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (courseId != null) {
+                predicates.add(builder.equal(root.get("course").get("id"), courseId));
+            }
+            if (teacherId != null) {
+                predicates.add(builder.equal(root.get("teacher").get("id"), teacherId));
+            }
+            if (date != null) {
+                predicates.add(builder.equal(root.get("sessionDate"), date));
+            }
+            if (status != null) {
+                predicates.add(builder.equal(root.get("status"), status));
+            }
+            return builder.and(predicates.toArray(Predicate[]::new));
+        };
+        Page<AttendanceSession> result = sessionRepository.findAll(
+                specification,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "startTime"))
+        );
+        return PageResponse.from(result.map(AttendanceSessionResponse::from));
+    }
+
+    @Transactional(readOnly = true)
+    public AttendanceSessionResponse get(UUID id) {
+        return AttendanceSessionResponse.from(findSession(id));
+    }
+
+    @Transactional
+    public AttendanceSessionResponse create(AttendanceSessionRequest request, Jwt jwt) {
+        Course course = courseService.findCourse(request.courseId());
+        accessService.requireCourseTeacherOrAdmin(course, jwt);
+        AttendanceSession session = new AttendanceSession(
+                course,
+                course.getTeacher(),
+                request.sessionDate(),
+                request.startTime(),
+                request.endTime()
+        );
+        return AttendanceSessionResponse.from(sessionRepository.save(session));
+    }
+
+    @Transactional
+    public AttendanceSessionResponse update(UUID id, AttendanceSessionRequest request, Jwt jwt) {
+        AttendanceSession session = findSession(id);
+        accessService.requireCourseTeacherOrAdmin(session.getCourse(), jwt);
+        if (!session.getCourse().getId().equals(request.courseId())) {
+            throw new ConflictException("An attendance session cannot be moved to another course");
+        }
+        session.updateSchedule(request.sessionDate(), request.startTime(), request.endTime());
+        auditService.record(AuditAction.UPDATE, "AttendanceSession", id, "Attendance session updated");
+        return AttendanceSessionResponse.from(session);
+    }
+
+    @Transactional
+    public AttendanceSessionResponse start(UUID id, Jwt jwt) {
+        AttendanceSession session = findAuthorizedSession(id, jwt);
+        session.start();
+        return AttendanceSessionResponse.from(session);
+    }
+
+    @Transactional
+    public AttendanceSessionResponse close(UUID id, Jwt jwt) {
+        AttendanceSession session = findAuthorizedSession(id, jwt);
+        session.close();
+        return AttendanceSessionResponse.from(session);
+    }
+
+    @Transactional
+    public AttendanceSessionResponse cancel(UUID id, Jwt jwt) {
+        AttendanceSession session = findAuthorizedSession(id, jwt);
+        session.cancel();
+        return AttendanceSessionResponse.from(session);
+    }
+
+    @Transactional
+    public void delete(UUID id, Jwt jwt) {
+        AttendanceSession session = findAuthorizedSession(id, jwt);
+        if (session.getStatus() != AttendanceSessionStatus.SCHEDULED) {
+            throw new ConflictException("Only scheduled attendance sessions can be deleted");
+        }
+        sessionRepository.delete(session);
+        auditService.record(AuditAction.DELETE, "AttendanceSession", id, "Attendance session deleted");
+    }
+
+    private AttendanceSession findAuthorizedSession(UUID id, Jwt jwt) {
+        AttendanceSession session = findSession(id);
+        accessService.requireCourseTeacherOrAdmin(session.getCourse(), jwt);
+        return session;
+    }
+
+    private AttendanceSession findSession(UUID id) {
+        return sessionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance session was not found"));
+    }
+}

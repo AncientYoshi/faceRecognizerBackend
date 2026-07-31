@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:smart_attendance;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+app:
+  security:
+    jwt:
+      issuer: smart-attendance-test
+      secret: test-secret-key-with-at-least-thirty-two-bytes-long
+      access-token-ttl: 15m
+      refresh-token-ttl: 7d
+  bootstrap:
+    admin:
+      enabled: false

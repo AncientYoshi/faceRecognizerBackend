@@ -1,0 +1,58 @@
+CREATE TABLE roles (
+    id UUID PRIMARY KEY,
+    name VARCHAR(30) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE app_users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(320) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE user_roles (
+    user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    role_id UUID NOT NULL REFERENCES roles(id),
+    PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE students (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL UNIQUE REFERENCES app_users(id) ON DELETE CASCADE,
+    student_number VARCHAR(80) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE teachers (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL UNIQUE REFERENCES app_users(id) ON DELETE CASCADE,
+    employee_number VARCHAR(80) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY,
+    jti VARCHAR(64) NOT NULL UNIQUE,
+    user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
+
+INSERT INTO roles (id, name, created_at) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'ADMIN', CURRENT_TIMESTAMP),
+    ('00000000-0000-0000-0000-000000000002', 'TEACHER', CURRENT_TIMESTAMP),
+    ('00000000-0000-0000-0000-000000000003', 'STUDENT', CURRENT_TIMESTAMP);
