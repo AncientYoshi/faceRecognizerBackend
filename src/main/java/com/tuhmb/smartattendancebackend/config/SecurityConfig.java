@@ -43,7 +43,8 @@ import java.util.List;
         JwtProperties.class,
         CorsProperties.class,
         BootstrapAdminProperties.class,
-        AiServiceProperties.class
+        AiServiceProperties.class,
+        HardwareProperties.class
 })
 public class SecurityConfig {
 
@@ -63,6 +64,7 @@ public class SecurityConfig {
                                 "/auth/login",
                                 "/auth/refresh",
                                 "/auth/logout",
+                                "/hardware/v1/**",
                                 "/actuator/health",
                                 "/v3/api-docs/**",
                                 "/swagger-ui.html",

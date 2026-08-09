@@ -4,6 +4,7 @@ import com.tuhmb.smartattendancebackend.common.exception.ConflictException;
 import com.tuhmb.smartattendancebackend.common.exception.ResourceNotFoundException;
 import com.tuhmb.smartattendancebackend.face.exception.AiServiceException;
 import com.tuhmb.smartattendancebackend.face.exception.ImageValidationException;
+import com.tuhmb.smartattendancebackend.hardware.exception.HardwareAuthenticationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -70,6 +72,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             MissingServletRequestPartException.class,
             MissingServletRequestParameterException.class,
+            MissingRequestHeaderException.class,
             MethodArgumentTypeMismatchException.class
     })
     ResponseEntity<ApiError> handleInvalidRequest(Exception exception, HttpServletRequest request) {
@@ -105,6 +108,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     ResponseEntity<ApiError> handleAuthentication(AuthenticationException exception, HttpServletRequest request) {
         return error(HttpStatus.UNAUTHORIZED, "authentication_failed", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(HardwareAuthenticationException.class)
+    ResponseEntity<ApiError> handleHardwareAuthentication(
+            HardwareAuthenticationException exception,
+            HttpServletRequest request
+    ) {
+        return error(HttpStatus.UNAUTHORIZED, "invalid_device_credentials", exception.getMessage(), request);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

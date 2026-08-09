@@ -11,9 +11,11 @@ import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceReposito
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.auth.repository.RefreshTokenRepository;
 import com.tuhmb.smartattendancebackend.face.client.FaceAiClient;
+import com.tuhmb.smartattendancebackend.face.client.IdentifyFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.client.RegisterFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.client.VerifyFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
+import com.tuhmb.smartattendancebackend.face.domain.FaceRegistration;
 import com.tuhmb.smartattendancebackend.user.domain.AppUser;
 import com.tuhmb.smartattendancebackend.user.domain.Role;
 import com.tuhmb.smartattendancebackend.user.domain.RoleName;
@@ -45,6 +47,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -247,6 +250,90 @@ class AiIntegrationFlowTest {
                 .andExpect(jsonPath("$.content[0].id").value(attendanceId));
     }
 
+    @Test
+    void esp32IdentifiesStudentRecordsAttendanceAndHandlesDuplicate() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> {
+            Student student = studentRepository.findById(studentId).orElseThrow();
+            faceRegistrationRepository.save(new FaceRegistration(student, "embedding-" + studentId));
+        });
+
+        faceAiClient.identificationResponse = new IdentifyFaceAiResponse(
+                true,
+                studentId,
+                0.95678,
+                true,
+                "MATCHED"
+        );
+
+        mockMvc.perform(multipart("/hardware/v1/attendance/identify")
+                        .file(faceImage())
+                        .param("sessionId", firstSessionId.toString())
+                        .header("X-Device-Id", "CLASSROOM-01")
+                        .header("X-Device-Key", "wrong-device-key"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("invalid_device_credentials"));
+        assertEquals(0, faceAiClient.identifyCalls.get());
+
+        faceAiClient.identificationResponse = new IdentifyFaceAiResponse(
+                true,
+                studentId,
+                0.95678,
+                false,
+                "MATCHED"
+        );
+        mockMvc.perform(multipart("/hardware/v1/attendance/identify")
+                        .file(faceImage())
+                        .param("sessionId", secondSessionId.toString())
+                        .header("X-Device-Id", "CLASSROOM-01")
+                        .header("X-Device-Key", "change-this-device-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verified").value(false))
+                .andExpect(jsonPath("$.reason").value("LIVENESS_FAILED"))
+                .andExpect(jsonPath("$.attendanceRecorded").value(false));
+        assertEquals(0, attendanceRepository.count());
+
+        faceAiClient.identificationResponse = new IdentifyFaceAiResponse(
+                true,
+                studentId,
+                0.95678,
+                true,
+                "MATCHED"
+        );
+
+        MvcResult recorded = mockMvc.perform(multipart("/hardware/v1/attendance/identify")
+                        .file(faceImage())
+                        .param("sessionId", firstSessionId.toString())
+                        .header("X-Device-Id", "CLASSROOM-01")
+                        .header("X-Device-Key", "change-this-device-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verified").value(true))
+                .andExpect(jsonPath("$.reason").value("ATTENDANCE_VERIFIED"))
+                .andExpect(jsonPath("$.studentId").value(studentId.toString()))
+                .andExpect(jsonPath("$.rollNumber").value("STU-AI-001"))
+                .andExpect(jsonPath("$.attendanceRecorded").value(true))
+                .andExpect(jsonPath("$.similarity").value(0.95678))
+                .andReturn();
+        String attendanceId = com.jayway.jsonpath.JsonPath.read(
+                recorded.getResponse().getContentAsString(),
+                "$.attendanceId"
+        );
+        assertEquals(List.of(studentId), faceAiClient.lastCandidateStudentIds);
+
+        mockMvc.perform(multipart("/hardware/v1/attendance/identify")
+                        .file(faceImage())
+                        .param("sessionId", firstSessionId.toString())
+                        .header("X-Device-Id", "CLASSROOM-01")
+                        .header("X-Device-Key", "change-this-device-secret"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verified").value(true))
+                .andExpect(jsonPath("$.reason").value("ALREADY_VERIFIED"))
+                .andExpect(jsonPath("$.attendanceRecorded").value(false))
+                .andExpect(jsonPath("$.attendanceId").value(attendanceId));
+
+        assertEquals(1, attendanceRepository.count());
+        assertEquals(3, faceAiClient.identifyCalls.get());
+    }
+
     private String login(String email, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -288,8 +375,11 @@ class AiIntegrationFlowTest {
 
         private RegisterFaceAiResponse registrationResponse;
         private VerifyFaceAiResponse verificationResponse;
+        private IdentifyFaceAiResponse identificationResponse;
+        private List<UUID> lastCandidateStudentIds = List.of();
         private final AtomicInteger registerCalls = new AtomicInteger();
         private final AtomicInteger verifyCalls = new AtomicInteger();
+        private final AtomicInteger identifyCalls = new AtomicInteger();
 
         @Override
         public RegisterFaceAiResponse register(String studentId, MultipartFile image) {
@@ -303,11 +393,21 @@ class AiIntegrationFlowTest {
             return verificationResponse;
         }
 
+        @Override
+        public IdentifyFaceAiResponse identify(List<UUID> candidateStudentIds, MultipartFile image) {
+            identifyCalls.incrementAndGet();
+            lastCandidateStudentIds = List.copyOf(candidateStudentIds);
+            return identificationResponse;
+        }
+
         private void reset() {
             registrationResponse = null;
             verificationResponse = null;
+            identificationResponse = null;
+            lastCandidateStudentIds = List.of();
             registerCalls.set(0);
             verifyCalls.set(0);
+            identifyCalls.set(0);
         }
     }
 }

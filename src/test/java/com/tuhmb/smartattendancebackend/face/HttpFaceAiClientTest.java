@@ -1,6 +1,7 @@
 package com.tuhmb.smartattendancebackend.face;
 
 import com.tuhmb.smartattendancebackend.face.client.HttpFaceAiClient;
+import com.tuhmb.smartattendancebackend.face.client.IdentifyFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.client.RegisterFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.client.VerifyFaceAiResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +12,9 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,6 +58,19 @@ class HttpFaceAiClientTest {
                         "{\"matched\":true,\"similarity\":0.91}",
                         MediaType.APPLICATION_JSON
                 ));
+        UUID candidateId = UUID.fromString("65788c5d-629c-426d-986d-eb77f42b7895");
+        server.expect(requestTo("http://localhost:8000/faces/identify"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("name=\"candidateStudentIds\"")))
+                .andExpect(content().string(containsString(candidateId.toString())))
+                .andExpect(content().string(containsString("name=\"image\"")))
+                .andRespond(withSuccess(
+                        """
+                                {"matched":true,"studentId":"%s","similarity":0.95,
+                                 "livenessPassed":true,"reason":"MATCHED"}
+                                """.formatted(candidateId),
+                        MediaType.APPLICATION_JSON
+                ));
 
         RegisterFaceAiResponse registration = client.register("student-123", image());
         assertTrue(registration.success());
@@ -62,6 +79,12 @@ class HttpFaceAiClientTest {
         VerifyFaceAiResponse verification = client.verify("student-123", image());
         assertTrue(verification.matched());
         assertEquals(0.91, verification.similarity());
+
+        IdentifyFaceAiResponse identification = client.identify(List.of(candidateId), image());
+        assertTrue(identification.matched());
+        assertEquals(candidateId, identification.studentId());
+        assertEquals(0.95, identification.similarity());
+        assertTrue(identification.livenessPassed());
         server.verify();
     }
 

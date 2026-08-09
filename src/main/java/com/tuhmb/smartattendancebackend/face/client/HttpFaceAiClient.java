@@ -18,6 +18,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
 
 @Component
 public class HttpFaceAiClient implements FaceAiClient {
@@ -32,17 +34,27 @@ public class HttpFaceAiClient implements FaceAiClient {
 
     @Override
     public RegisterFaceAiResponse register(String studentId, MultipartFile image) {
-        return post("/faces/register", studentId, image, RegisterFaceAiResponse.class);
+        MultiValueMap<String, Object> body = imageBody(image);
+        body.add("studentId", studentId);
+        return post("/faces/register", body, RegisterFaceAiResponse.class);
     }
 
     @Override
     public VerifyFaceAiResponse verify(String studentId, MultipartFile image) {
-        return post("/faces/verify", studentId, image, VerifyFaceAiResponse.class);
+        MultiValueMap<String, Object> body = imageBody(image);
+        body.add("studentId", studentId);
+        return post("/faces/verify", body, VerifyFaceAiResponse.class);
     }
 
-    private <T> T post(String path, String studentId, MultipartFile image, Class<T> responseType) {
+    @Override
+    public IdentifyFaceAiResponse identify(List<UUID> candidateStudentIds, MultipartFile image) {
+        MultiValueMap<String, Object> body = imageBody(image);
+        body.add("candidateStudentIds", objectMapper.writeValueAsString(candidateStudentIds));
+        return post("/faces/identify", body, IdentifyFaceAiResponse.class);
+    }
+
+    private MultiValueMap<String, Object> imageBody(MultipartFile image) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("studentId", studentId);
         HttpHeaders imageHeaders = new HttpHeaders();
         imageHeaders.setContentType(mediaType(image));
         imageHeaders.setContentDisposition(ContentDisposition.formData()
@@ -56,6 +68,10 @@ public class HttpFaceAiClient implements FaceAiClient {
                         imageHeaders
                 )
         );
+        return body;
+    }
+
+    private <T> T post(String path, MultiValueMap<String, Object> body, Class<T> responseType) {
         try {
             T response = restClient.post()
                     .uri(path)

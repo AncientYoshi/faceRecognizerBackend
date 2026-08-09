@@ -8,6 +8,7 @@ import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionR
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceRepository;
 import com.tuhmb.smartattendancebackend.auth.repository.RefreshTokenRepository;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
+import com.tuhmb.smartattendancebackend.timetable.repository.TimetableRepository;
 import com.tuhmb.smartattendancebackend.user.domain.AppUser;
 import com.tuhmb.smartattendancebackend.user.domain.Role;
 import com.tuhmb.smartattendancebackend.user.domain.RoleName;
@@ -58,6 +59,8 @@ class AcademicManagementIntegrationTest {
     @Autowired
     private FaceRegistrationRepository faceRegistrationRepository;
     @Autowired
+    private TimetableRepository timetableRepository;
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @BeforeEach
@@ -65,6 +68,7 @@ class AcademicManagementIntegrationTest {
         attendanceRepository.deleteAll();
         faceRegistrationRepository.deleteAll();
         sessionRepository.deleteAll();
+        timetableRepository.deleteAll();
         enrollmentRepository.deleteAll();
         courseRepository.deleteAll();
         departmentRepository.deleteAll();
@@ -164,12 +168,54 @@ class AcademicManagementIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("data_conflict"));
 
+        MvcResult timetable = mockMvc.perform(post("/timetables")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "courseId": "%s",
+                                  "dayOfWeek": "MONDAY",
+                                  "startTime": "08:30:00",
+                                  "endTime": "10:00:00",
+                                  "room": "Lab 2",
+                                  "effectiveFrom": "2026-08-01",
+                                  "effectiveTo": "2026-12-31",
+                                  "active": true
+                                }
+                                """.formatted(courseId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.courseId").value(courseId))
+                .andReturn();
+        String timetableId = JsonPath.read(timetable.getResponse().getContentAsString(), "$.id");
+
         String studentToken = login("student@example.com", "student-password");
         mockMvc.perform(get("/students/{studentId}/courses", studentId)
                         .header("Authorization", bearer(studentToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].id").value(courseId));
+
+        mockMvc.perform(get("/students/me/timetable")
+                        .queryParam("weekStart", "2026-08-05")
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.studentId").value(studentId))
+                .andExpect(jsonPath("$.weekStart").value("2026-08-03"))
+                .andExpect(jsonPath("$.weekEnd").value("2026-08-09"))
+                .andExpect(jsonPath("$.timeZone").value("Asia/Yangon"))
+                .andExpect(jsonPath("$.entries.length()").value(1))
+                .andExpect(jsonPath("$.entries[0].timetableId").value(timetableId))
+                .andExpect(jsonPath("$.entries[0].courseCode").value("CSE-101"))
+                .andExpect(jsonPath("$.entries[0].teacherName").value("Grace Teacher"))
+                .andExpect(jsonPath("$.entries[0].date").value("2026-08-03"))
+                .andExpect(jsonPath("$.entries[0].dayOfWeek").value("MONDAY"))
+                .andExpect(jsonPath("$.entries[0].startTime").value("08:30:00"))
+                .andExpect(jsonPath("$.entries[0].endTime").value("10:00:00"))
+                .andExpect(jsonPath("$.entries[0].room").value("Lab 2"));
+
+        mockMvc.perform(get("/timetables")
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isForbidden());
 
         String teacherToken = login("teacher@example.com", "teacher-password");
         mockMvc.perform(get("/courses/{courseId}/enrollments", courseId)

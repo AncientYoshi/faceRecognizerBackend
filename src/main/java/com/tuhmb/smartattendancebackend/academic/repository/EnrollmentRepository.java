@@ -4,7 +4,10 @@ import com.tuhmb.smartattendancebackend.academic.domain.Enrollment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,4 +24,17 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     long countByCourseId(UUID courseId);
 
     long countByStudentId(UUID studentId);
+
+    @Query("""
+            select enrollment.student.id
+            from Enrollment enrollment
+            where enrollment.course.id = :courseId
+              and exists (
+                  select registration.id
+                  from FaceRegistration registration
+                  where registration.student = enrollment.student
+              )
+            order by enrollment.student.id
+            """)
+    List<UUID> findFaceRegisteredStudentIdsByCourseId(@Param("courseId") UUID courseId);
 }

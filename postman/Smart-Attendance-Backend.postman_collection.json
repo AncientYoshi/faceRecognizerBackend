@@ -1,0 +1,729 @@
+{
+  "info": {
+    "_postman_id": "6bd7f15b-3d16-4f76-9982-af5316daab56",
+    "name": "Smart Attendance Backend",
+    "description": "Complete Spring Boot API collection for Smart Attendance milestones 1-4. Run folders 00 through 11 in order; folder 99 contains manual lifecycle and cleanup operations. Scripts save JWTs and resource IDs into the selected environment automatically. Before face requests, set faceImagePath or select an image in Postman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const now = new Date();",
+          "const start = new Date(now.getTime() - 60 * 1000);",
+          "const end = new Date(now.getTime() + 30 * 60 * 1000);",
+          "const mondayOffset = (now.getUTCDay() + 6) % 7;",
+          "const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - mondayOffset));",
+          "pm.collectionVariables.set('today', now.toISOString().slice(0, 10));",
+          "pm.collectionVariables.set('weekStart', monday.toISOString().slice(0, 10));",
+          "pm.collectionVariables.set('currentMonth', now.toISOString().slice(0, 7));",
+          "pm.collectionVariables.set('sessionStart', start.toISOString());",
+          "pm.collectionVariables.set('sessionEnd', end.toISOString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Response status is successful', function () {",
+          "  pm.expect(pm.response.code).to.be.oneOf([200, 201, 204]);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "adminEmail", "value": "admin@example.com" },
+    { "key": "adminPassword", "value": "change-this-password" },
+    { "key": "teacherEmail", "value": "postman.teacher@example.com" },
+    { "key": "teacherPassword", "value": "teacher-password" },
+    { "key": "studentEmail", "value": "postman.student@example.com" },
+    { "key": "studentPassword", "value": "student-password" },
+    { "key": "departmentCode", "value": "CSE-PM" },
+    { "key": "courseCode", "value": "CSE-PM-101" },
+    { "key": "semester", "value": "FIRST" },
+    { "key": "academicYear", "value": "2026-2027" },
+    { "key": "faceImagePath", "value": "/absolute/path/to/student-face.jpg" },
+    { "key": "hardwareDeviceId", "value": "CLASSROOM-01" },
+    { "key": "hardwareDeviceKey", "value": "change-this-device-secret" },
+    { "key": "today", "value": "" },
+    { "key": "weekStart", "value": "" },
+    { "key": "currentMonth", "value": "" },
+    { "key": "sessionStart", "value": "" },
+    { "key": "sessionEnd", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 - Health and API Docs",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/actuator/health",
+            "description": "Public Spring Boot health endpoint."
+          }
+        },
+        {
+          "name": "OpenAPI JSON",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/v3/api-docs",
+            "description": "Public OpenAPI specification."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Authentication",
+      "item": [
+        {
+          "name": "Login Admin - Save Tokens",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('adminAccessToken', body.accessToken);",
+              "  pm.environment.set('adminRefreshToken', body.refreshToken);",
+              "}"
+            ] }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Logs in the bootstrap administrator and stores adminAccessToken/adminRefreshToken."
+          }
+        },
+        {
+          "name": "Refresh Admin Token - Rotate Tokens",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('adminAccessToken', body.accessToken);",
+              "  pm.environment.set('adminRefreshToken', body.refreshToken);",
+              "}"
+            ] }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/me" }
+        }
+      ]
+    },
+    {
+      "name": "02 - Users and Roles",
+      "item": [
+        {
+          "name": "List Roles",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/roles" }
+        },
+        {
+          "name": "List Users",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/users?query=&page=0&size=20" }
+        },
+        {
+          "name": "Create Teacher - Save IDs",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) {",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('teacherUserId', body.id);",
+              "  pm.environment.set('teacherId', body.teacherId);",
+              "}"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"{{teacherPassword}}\",\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Teacher\",\n  \"roles\": [\"TEACHER\"],\n  \"studentNumber\": null,\n  \"employeeNumber\": \"TCH-PM-001\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/users"
+          }
+        },
+        {
+          "name": "Create Student - Save IDs",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) {",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('studentUserId', body.id);",
+              "  pm.environment.set('studentId', body.studentId);",
+              "}"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{studentPassword}}\",\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Student\",\n  \"roles\": [\"STUDENT\"],\n  \"studentNumber\": \"STU-PM-001\",\n  \"employeeNumber\": null\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/users"
+          }
+        },
+        {
+          "name": "Login Created Teacher - Save Tokens",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { const body = pm.response.json(); pm.environment.set('teacherAccessToken', body.accessToken); pm.environment.set('teacherRefreshToken', body.refreshToken); }"
+            ] }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"{{teacherPassword}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Login Created Student - Save Tokens",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) { const body = pm.response.json(); pm.environment.set('studentAccessToken', body.accessToken); pm.environment.set('studentRefreshToken', body.refreshToken); }"
+            ] }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{studentPassword}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Get My Student Profile - Refresh IDs",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.environment.set('studentId', body.studentId);",
+              "  pm.environment.set('studentUserId', body.userId);",
+              "}"
+            ] }
+          }],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/students/me",
+            "description": "Returns the authenticated student's profile and saves the studentId required by student-scoped APIs."
+          }
+        },
+        {
+          "name": "Get Teacher User",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/users/{{teacherUserId}}" }
+        },
+        {
+          "name": "Get Student User",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/users/{{studentUserId}}" }
+        },
+        {
+          "name": "Update Student User",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": null,\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Student Updated\",\n  \"enabled\": true,\n  \"roles\": [\"STUDENT\"],\n  \"studentNumber\": \"STU-PM-001\",\n  \"employeeNumber\": null\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/users/{{studentUserId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Departments",
+      "item": [
+        {
+          "name": "Create Department - Save ID",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.environment.set('departmentId', pm.response.json().id); }"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{departmentCode}}\",\n  \"name\": \"Postman Computer Science\",\n  \"description\": \"Department created by the Postman collection\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/departments"
+          }
+        },
+        {
+          "name": "List Departments",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/departments?query=&page=0&size=20" }
+        },
+        {
+          "name": "Get Department",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}" }
+        },
+        {
+          "name": "Update Department",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{departmentCode}}\",\n  \"name\": \"Postman Computer Science\",\n  \"description\": \"Updated through Postman\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/departments/{{departmentId}}"
+          }
+        },
+        {
+          "name": "Assign Teacher to Department",
+          "request": { "method": "PUT", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}/teachers/{{teacherId}}" }
+        },
+        {
+          "name": "Assign Student to Department",
+          "request": { "method": "PUT", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}/students/{{studentId}}" }
+        }
+      ]
+    },
+    {
+      "name": "04 - Courses and Enrollment",
+      "item": [
+        {
+          "name": "Create Course - Save ID",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.environment.set('courseId', pm.response.json().id); }"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{courseCode}}\",\n  \"name\": \"Smart Attendance Testing\",\n  \"semester\": \"{{semester}}\",\n  \"academicYear\": \"{{academicYear}}\",\n  \"departmentId\": \"{{departmentId}}\",\n  \"teacherId\": \"{{teacherId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/courses"
+          }
+        },
+        {
+          "name": "List Courses",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/courses?query=&departmentId={{departmentId}}&teacherId={{teacherId}}&semester={{semester}}&academicYear={{academicYear}}&page=0&size=20" }
+        },
+        {
+          "name": "Get Course",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/courses/{{courseId}}" }
+        },
+        {
+          "name": "Update Course",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{courseCode}}\",\n  \"name\": \"Smart Attendance Testing Updated\",\n  \"semester\": \"{{semester}}\",\n  \"academicYear\": \"{{academicYear}}\",\n  \"departmentId\": \"{{departmentId}}\",\n  \"teacherId\": \"{{teacherId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/courses/{{courseId}}"
+          }
+        },
+        {
+          "name": "Enroll Student",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"studentId\": \"{{studentId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/courses/{{courseId}}/enrollments"
+          }
+        },
+        {
+          "name": "List Course Enrollments as Admin",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/courses/{{courseId}}/enrollments?page=0&size=20" }
+        },
+        {
+          "name": "List Course Enrollments as Teacher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/courses/{{courseId}}/enrollments?page=0&size=20"
+          }
+        },
+        {
+          "name": "List Student Courses as Student",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/students/{{studentId}}/courses?page=0&size=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04A - Timetable",
+      "item": [
+        {
+          "name": "Create Weekly Timetable Entry - Save ID",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.environment.set('timetableId', pm.response.json().id); }"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"dayOfWeek\": \"MONDAY\",\n  \"startTime\": \"08:30:00\",\n  \"endTime\": \"10:00:00\",\n  \"room\": \"Lab PM-2\",\n  \"effectiveFrom\": \"{{weekStart}}\",\n  \"effectiveTo\": null,\n  \"active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/timetables"
+          }
+        },
+        {
+          "name": "Get My Weekly Timetable as Student",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/students/me/timetable?weekStart={{weekStart}}",
+            "description": "The backend resolves the student from the JWT and returns only timetable entries for enrolled courses."
+          }
+        },
+        {
+          "name": "List Timetable Entries as Admin",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/timetables?courseId={{courseId}}&active=true&page=0&size=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Attendance Sessions",
+      "item": [
+        {
+          "name": "Create Active-Window Session - Save ID",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.environment.set('sessionId', pm.response.json().id); }"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"sessionDate\": \"{{today}}\",\n  \"startTime\": \"{{sessionStart}}\",\n  \"endTime\": \"{{sessionEnd}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/attendance-sessions"
+          }
+        },
+        {
+          "name": "List Sessions",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/attendance-sessions?courseId={{courseId}}&teacherId={{teacherId}}&date={{today}}&page=0&size=20" }
+        },
+        {
+          "name": "Get Session",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}" }
+        },
+        {
+          "name": "Update Scheduled Session",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"sessionDate\": \"{{today}}\",\n  \"startTime\": \"{{sessionStart}}\",\n  \"endTime\": \"{{sessionEnd}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}"
+          }
+        },
+        {
+          "name": "Start Session",
+          "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}/start" }
+        }
+      ]
+    },
+    {
+      "name": "06 - Face Registration",
+      "description": "Set faceImagePath in the environment or choose a local JPEG/PNG/WebP file in Postman before sending the registration request. FastAPI must be running on localhost:8000 because Spring coordinates the call.",
+      "item": [
+        {
+          "name": "Register Student Face",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "image", "type": "file", "src": "{{faceImagePath}}", "description": "Select the student's face image if Postman does not resolve the environment path." }]
+            },
+            "url": "{{baseUrl}}/students/{{studentId}}/face/register"
+          }
+        },
+        {
+          "name": "Get Face Registration",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/students/{{studentId}}/face"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Attendance Verification and Records",
+      "item": [
+        {
+          "name": "Verify Attendance - Save Attendance ID",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  if (body.attendanceId) { pm.environment.set('attendanceId', body.attendanceId); }",
+              "}"
+            ] }
+          }],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "image", "type": "file", "src": "{{faceImagePath}}", "description": "Use the same student's face image." }]
+            },
+            "url": "{{baseUrl}}/attendance/verify?sessionId={{sessionId}}"
+          }
+        },
+        {
+          "name": "ESP32 Identify Attendance",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "X-Device-Id", "value": "{{hardwareDeviceId}}", "type": "text" },
+              { "key": "X-Device-Key", "value": "{{hardwareDeviceKey}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "image", "type": "file", "src": "{{faceImagePath}}", "description": "Simulates the JPEG captured by the ESP32-CAM." }]
+            },
+            "url": "{{baseUrl}}/hardware/v1/attendance/identify?sessionId={{sessionId}}",
+            "description": "Uses device headers instead of a JWT. Because the student verification request runs first, this normally demonstrates the ALREADY_VERIFIED response."
+          }
+        },
+        {
+          "name": "List Attendance as Admin",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/attendance?sessionId={{sessionId}}&courseId={{courseId}}&studentId={{studentId}}&page=0&size=20" }
+        },
+        {
+          "name": "List Attendance as Teacher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/attendance?courseId={{courseId}}&page=0&size=20"
+          }
+        },
+        {
+          "name": "List Attendance as Student",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/attendance?studentId={{studentId}}&page=0&size=20"
+          }
+        },
+        {
+          "name": "Get Attendance Record as Student",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/attendance/{{attendanceId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Dashboards",
+      "item": [
+        {
+          "name": "Admin Dashboard",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/dashboard/admin" }
+        },
+        {
+          "name": "Teacher Dashboard",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/dashboard/teacher"
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Reports",
+      "description": "PDF and Excel requests return binary downloads. In Postman use Send and Download to save them.",
+      "item": [
+        {
+          "name": "Attendance Report - All Filters",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/reports/attendance?courseId={{courseId}}&studentId={{studentId}}&departmentId={{departmentId}}&from={{today}}&to={{today}}&page=0&size=50" }
+        },
+        {
+          "name": "Monthly Attendance Report",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/reports/attendance?month={{currentMonth}}&page=0&size=50" }
+        },
+        {
+          "name": "Attendance Report as Teacher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/reports/attendance?courseId={{courseId}}&page=0&size=50"
+          }
+        },
+        {
+          "name": "Export Attendance PDF",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/pdf" }], "url": "{{baseUrl}}/reports/attendance/export/pdf?courseId={{courseId}}&from={{today}}&to={{today}}" }
+        },
+        {
+          "name": "Export Attendance Excel",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }], "url": "{{baseUrl}}/reports/attendance/export/excel?departmentId={{departmentId}}&month={{currentMonth}}" }
+        }
+      ]
+    },
+    {
+      "name": "10 - Audit Logs",
+      "item": [
+        {
+          "name": "List All Audit Logs",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/audit-logs?page=0&size=20" }
+        },
+        {
+          "name": "Filter Login Audit Logs",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/audit-logs?action=LOGIN&page=0&size=20" }
+        },
+        {
+          "name": "Filter User Audit Logs",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/audit-logs?userId={{studentUserId}}&page=0&size=20" }
+        }
+      ]
+    },
+    {
+      "name": "11 - System Settings",
+      "item": [
+        {
+          "name": "List System Settings",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/system-settings" }
+        },
+        {
+          "name": "Get AI Similarity Threshold",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/system-settings/AI_SIMILARITY_THRESHOLD" }
+        },
+        {
+          "name": "Update AI Similarity Threshold",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": \"0.85\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/system-settings/AI_SIMILARITY_THRESHOLD"
+          }
+        },
+        {
+          "name": "Get Attendance Threshold",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/system-settings/ATTENDANCE_THRESHOLD" }
+        },
+        {
+          "name": "Update Current Semester",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": \"{{semester}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/system-settings/CURRENT_SEMESTER"
+          }
+        },
+        {
+          "name": "Update Current Academic Year",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": \"{{academicYear}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/system-settings/CURRENT_ACADEMIC_YEAR"
+          }
+        }
+      ]
+    },
+    {
+      "name": "99 - Manual Lifecycle and Cleanup",
+      "description": "These requests intentionally change or remove state and should be run individually when appropriate, not as part of the main setup flow.",
+      "item": [
+        {
+          "name": "Logout Admin",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{adminRefreshToken}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        },
+        {
+          "name": "Close Active Session",
+          "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}/close" }
+        },
+        {
+          "name": "Cancel Scheduled Session",
+          "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}/cancel" }
+        },
+        {
+          "name": "Delete Scheduled Session",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}" }
+        },
+        {
+          "name": "Unenroll Student",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/courses/{{courseId}}/enrollments/{{studentId}}" }
+        },
+        {
+          "name": "Delete Course",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/courses/{{courseId}}" }
+        },
+        {
+          "name": "Unassign Student from Department",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}/students/{{studentId}}" }
+        },
+        {
+          "name": "Unassign Teacher from Department",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}/teachers/{{teacherId}}" }
+        },
+        {
+          "name": "Delete Department",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}" }
+        },
+        {
+          "name": "Delete Student User",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/users/{{studentUserId}}" }
+        },
+        {
+          "name": "Delete Teacher User",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/users/{{teacherUserId}}" }
+        }
+      ]
+    }
+  ]
+}

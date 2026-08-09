@@ -187,6 +187,7 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.studentNumber").value("STU-001"))
                 .andReturn();
         String userId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+        String studentId = JsonPath.read(created.getResponse().getContentAsString(), "$.studentId");
 
         mockMvc.perform(get("/users")
                         .header("Authorization", "Bearer " + adminAccessToken)
@@ -196,6 +197,23 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.content[0].id").value(userId));
 
         String studentAccessToken = loginAccessToken("student@example.com", "student-password");
+
+        mockMvc.perform(get("/students/me")
+                        .header("Authorization", "Bearer " + studentAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.studentId").value(studentId))
+                .andExpect(jsonPath("$.userId").value(userId))
+                .andExpect(jsonPath("$.studentNumber").value("STU-001"))
+                .andExpect(jsonPath("$.email").value("student@example.com"))
+                .andExpect(jsonPath("$.firstName").value("Alice"))
+                .andExpect(jsonPath("$.lastName").value("Student"))
+                .andExpect(jsonPath("$.departmentId").doesNotExist());
+
+        mockMvc.perform(get("/students/me")
+                        .header("Authorization", "Bearer " + adminAccessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("forbidden"));
+
         mockMvc.perform(get("/users").header("Authorization", "Bearer " + studentAccessToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("forbidden"));

@@ -168,6 +168,7 @@ Department APIs:
 
 Course and enrollment APIs:
 
+- `GET /students/me` — current authenticated student's profile and `studentId`
 - `GET /courses`
 - `GET /courses/{id}`
 - `POST /courses` — admin
@@ -178,9 +179,30 @@ Course and enrollment APIs:
 - `GET /courses/{courseId}/enrollments` — admin or assigned teacher
 - `GET /students/{studentId}/courses` — admin or that student
 
+Student clients should call `GET /students/me` after login and use its `studentId` for student-scoped APIs such as `GET /students/{studentId}/courses`. This endpoint uses the authenticated JWT subject and does not require access to the admin-only `/users/{id}` API.
+
 Course search accepts `query`, `departmentId`, `teacherId`, `semester`, `academicYear`, `page`, and `size`.
 
 Academic consistency rules prevent moving an enrolled student to another department, moving a teacher who owns courses, duplicate enrollment, and assigning a course teacher from another department.
+
+## Timetable
+
+Administrators and teachers manage recurring timetable entries with:
+
+- `GET /timetables`
+- `GET /timetables/{id}`
+- `POST /timetables`
+- `PUT /timetables/{id}`
+- `DELETE /timetables/{id}`
+
+The student portal retrieves a weekly timetable with:
+
+```http
+GET /students/me/timetable?weekStart=2026-08-03
+Authorization: Bearer STUDENT_ACCESS_TOKEN
+```
+
+The student is derived from the JWT. The response contains only active timetable entries for courses in which that student is enrolled. `weekStart` is optional and is normalized to Monday; when omitted, the current week in `app.time-zone` is returned. Each entry includes its actual date, course, semester, academic year, teacher, start/end time, room, and a `today` flag.
 
 ## Attendance sessions
 
@@ -247,6 +269,19 @@ Administrators can access all records. Teachers only see records for their assig
 
 When FastAPI reports `matched: false`, Spring returns the similarity score but does not create an attendance record. Verification requires an `ACTIVE` session and the current time must be inside its configured start/end window.
 
+## ESP32-CAM hardware attendance
+
+An ESP32-CAM can identify an enrolled student without a student JWT or student ID:
+
+```text
+POST /hardware/v1/attendance/identify?sessionId={activeSessionId}
+X-Device-Id: configured device ID
+X-Device-Key: configured device secret
+multipart image: captured JPEG
+```
+
+Spring authenticates the device, limits AI candidates to face-registered students enrolled in the session's course, calls `POST /faces/identify` on FastAPI, and records attendance. The complete ESP32 sketch, wiring notes, test command, response contract, and FastAPI route template are in [`hardware/README.md`](hardware/README.md).
+
 ## Dashboards and reports
 
 Dashboard APIs:
@@ -310,3 +345,7 @@ Tests use an isolated H2 database in PostgreSQL compatibility mode:
 ```bash
 ./mvnw test
 ```
+
+## Postman
+
+Import the ready-made collection and local environment from the [`postman`](postman) directory. The collection scripts automatically store JWTs and IDs as the setup requests run. See [`postman/README.md`](postman/README.md) for the import order and face-image setup.

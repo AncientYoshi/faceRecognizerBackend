@@ -42,7 +42,7 @@ app:
     jwt:
       issuer: ${JWT_ISSUER:smart-attendance-backend}
       secret: ${JWT_SECRET}
-      access-token-ttl: ${JWT_ACCESS_TTL:15m}
+      access-token-ttl: ${JWT_ACCESS_TTL:1d}
       refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
@@ -57,6 +57,9 @@ app:
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
     connect-timeout: ${AI_CONNECT_TIMEOUT:3s}
     read-timeout: ${AI_READ_TIMEOUT:30s}
+  hardware:
+    device-id: ${HARDWARE_DEVICE_ID:CLASSROOM-01}
+    device-key: ${HARDWARE_DEVICE_KEY:change-this-device-secret}
 
 logging:
   level:
