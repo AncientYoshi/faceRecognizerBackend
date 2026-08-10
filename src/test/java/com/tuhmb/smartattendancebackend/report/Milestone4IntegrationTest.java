@@ -205,6 +205,63 @@ class Milestone4IntegrationTest {
                 .andExpect(jsonPath("$.totalElements").value(2));
     }
 
+    @Test
+    void teacherCanListWeeklyAndMonthlyAttendancePercentageForEveryEnrolledStudent() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> {
+            Course course = courseRepository.findById(courseId).orElseThrow();
+            Instant now = Instant.now();
+            sessionRepository.save(new AttendanceSession(
+                    course,
+                    course.getTeacher(),
+                    LocalDate.now(ZoneId.of("Asia/Yangon")),
+                    now.minusSeconds(7200),
+                    now.minusSeconds(3600)
+            ));
+        });
+        String teacherToken = login("teacher4@example.com", "teacher-password");
+
+        mockMvc.perform(get("/reports/attendance/students")
+                        .param("period", "WEEK")
+                        .param("courseId", courseId.toString())
+                        .param("query", "M4-STU-001")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.period").value("WEEK"))
+                .andExpect(jsonPath("$.students.totalElements").value(1))
+                .andExpect(jsonPath("$.students.content[0].studentId").value(studentId.toString()))
+                .andExpect(jsonPath("$.students.content[0].courseId").value(courseId.toString()))
+                .andExpect(jsonPath("$.students.content[0].totalSessions").value(2))
+                .andExpect(jsonPath("$.students.content[0].presentSessions").value(1))
+                .andExpect(jsonPath("$.students.content[0].absentSessions").value(1))
+                .andExpect(jsonPath("$.students.content[0].attendancePercentage").value(50.0));
+
+        mockMvc.perform(get("/reports/attendance/students")
+                        .param("period", "MONTH")
+                        .param("courseId", courseId.toString())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.period").value("MONTH"))
+                .andExpect(jsonPath("$.students.content[0].attendancePercentage").value(50.0));
+
+        mockMvc.perform(get("/reports/attendance/students/export/pdf")
+                        .param("period", "WEEK")
+                        .param("courseId", courseId.toString())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString("student-attendance-week-")))
+                .andExpect(content().contentType("application/pdf"));
+
+        mockMvc.perform(get("/reports/attendance/students/export/excel")
+                        .param("period", "MONTH")
+                        .param("courseId", courseId.toString())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", containsString("student-attendance-month-")))
+                .andExpect(content().contentType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ));
+    }
+
     private String login(String email, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

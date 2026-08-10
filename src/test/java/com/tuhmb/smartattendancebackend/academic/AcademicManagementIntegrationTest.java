@@ -136,6 +136,31 @@ class AcademicManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.departmentId").value(departmentId));
 
+        mockMvc.perform(get("/departments/{departmentId}/teachers", departmentId)
+                        .queryParam("query", "grace")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].teacherId").value(teacherId))
+                .andExpect(jsonPath("$.content[0].employeeNumber").value("TCH-001"))
+                .andExpect(jsonPath("$.content[0].email").value("teacher@example.com"))
+                .andExpect(jsonPath("$.content[0].fullName").value("Grace Teacher"))
+                .andExpect(jsonPath("$.content[0].departmentId").value(departmentId))
+                .andExpect(jsonPath("$.content[0].departmentCode").value("CSE"));
+
+        mockMvc.perform(get("/departments/{departmentId}/students", departmentId)
+                        .queryParam("query", "STU-001")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].studentId").value(studentId))
+                .andExpect(jsonPath("$.content[0].studentNumber").value("STU-001"))
+                .andExpect(jsonPath("$.content[0].email").value("student@example.com"))
+                .andExpect(jsonPath("$.content[0].fullName").value("Alice Student"))
+                .andExpect(jsonPath("$.content[0].departmentId").value(departmentId))
+                .andExpect(jsonPath("$.content[0].departmentName")
+                        .value("Computer Science and Engineering"));
+
         MvcResult course = mockMvc.perform(post("/courses")
                         .header("Authorization", bearer(adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -189,6 +214,11 @@ class AcademicManagementIntegrationTest {
         String timetableId = JsonPath.read(timetable.getResponse().getContentAsString(), "$.id");
 
         String studentToken = login("student@example.com", "student-password");
+
+        mockMvc.perform(get("/departments/{departmentId}/students", departmentId)
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isForbidden());
+
         mockMvc.perform(get("/students/{studentId}/courses", studentId)
                         .header("Authorization", bearer(studentToken)))
                 .andExpect(status().isOk())

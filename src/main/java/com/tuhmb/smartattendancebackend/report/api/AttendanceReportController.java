@@ -3,6 +3,7 @@ package com.tuhmb.smartattendancebackend.report.api;
 import com.tuhmb.smartattendancebackend.report.service.AttendanceReportFilter;
 import com.tuhmb.smartattendancebackend.report.service.AttendanceReportService;
 import com.tuhmb.smartattendancebackend.report.service.ReportFile;
+import com.tuhmb.smartattendancebackend.report.service.StudentAttendancePercentageService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,9 +30,49 @@ import java.util.UUID;
 public class AttendanceReportController {
 
     private final AttendanceReportService reportService;
+    private final StudentAttendancePercentageService percentageService;
 
-    public AttendanceReportController(AttendanceReportService reportService) {
+    public AttendanceReportController(
+            AttendanceReportService reportService,
+            StudentAttendancePercentageService percentageService
+    ) {
         this.reportService = reportService;
+        this.percentageService = percentageService;
+    }
+
+    @GetMapping("/students")
+    public StudentAttendancePercentageReportResponse studentPercentages(
+            @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) String query,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return percentageService.report(period, date, courseId, query, page, size, jwt);
+    }
+
+    @GetMapping("/students/export/pdf")
+    public ResponseEntity<byte[]> studentPercentagesPdf(
+            @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) String query,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return download(percentageService.exportPdf(period, date, courseId, query, jwt));
+    }
+
+    @GetMapping("/students/export/excel")
+    public ResponseEntity<byte[]> studentPercentagesExcel(
+            @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) String query,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return download(percentageService.exportExcel(period, date, courseId, query, jwt));
     }
 
     @GetMapping

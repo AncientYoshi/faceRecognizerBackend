@@ -165,6 +165,10 @@ Department APIs:
 - `DELETE /departments/{departmentId}/students/{studentId}` — admin
 - `PUT /departments/{departmentId}/teachers/{teacherId}` — admin
 - `DELETE /departments/{departmentId}/teachers/{teacherId}` — admin
+- `GET /departments/{departmentId}/students?query=&page=0&size=20` — admin assignment list
+- `GET /departments/{departmentId}/teachers?query=&page=0&size=20` — admin assignment list
+
+The assignment-list responses include the profile ID, linked user ID, email, first/last/full name, student or employee number, and department ID/code/name. Search matches the reference number, email, first name, or last name.
 
 Course and enrollment APIs:
 
@@ -292,6 +296,9 @@ Dashboard APIs:
 Report APIs:
 
 - `GET /reports/attendance` — admin or teacher
+- `GET /reports/attendance/students` — weekly/monthly percentage list for admin or teacher
+- `GET /reports/attendance/students/export/pdf` — weekly/monthly student percentage PDF
+- `GET /reports/attendance/students/export/excel` — weekly/monthly student percentage Excel workbook
 - `GET /reports/attendance/export/pdf` — admin or teacher
 - `GET /reports/attendance/export/excel` — admin or teacher
 
@@ -311,6 +318,24 @@ curl -OJ "http://localhost:8080/reports/attendance/export/excel?departmentId=DEP
 ```
 
 The attendance rate is `recorded attendance / expected attendance`. Expected attendance is calculated from eligible sessions and course enrollments, so the dashboard and report denominator remains meaningful when attendance is missing.
+
+Teachers can list every enrolled student and see present, absent, total-session, and percentage values for one of their assigned courses:
+
+```bash
+curl "http://localhost:8080/reports/attendance/students?period=WEEK&date=2026-08-10&courseId=COURSE_ID&page=0&size=20" \
+  -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
+
+curl "http://localhost:8080/reports/attendance/students?period=MONTH&date=2026-08-10&courseId=COURSE_ID&query=STU-001" \
+  -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
+
+curl -OJ "http://localhost:8080/reports/attendance/students/export/pdf?period=WEEK&date=2026-08-10&courseId=COURSE_ID" \
+  -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
+
+curl -OJ "http://localhost:8080/reports/attendance/students/export/excel?period=MONTH&date=2026-08-10&courseId=COURSE_ID" \
+  -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
+```
+
+`period` is `WEEK` or `MONTH`; it defaults to `WEEK`. `date` selects the week or month and defaults to today in the configured system time zone. Weekly reports run Monday through Sunday. `courseId` and `query` are optional. Search matches student number, email, first name, or last name. A teacher is always restricted to their assigned courses. The list starts from enrollments, so students with no attendance record are still returned with `0.00` percent.
 
 ## Audit logs and system settings
 

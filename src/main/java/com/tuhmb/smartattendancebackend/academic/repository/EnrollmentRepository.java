@@ -3,6 +3,7 @@ package com.tuhmb.smartattendancebackend.academic.repository;
 import com.tuhmb.smartattendancebackend.academic.domain.Enrollment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -24,6 +25,27 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     long countByCourseId(UUID courseId);
 
     long countByStudentId(UUID studentId);
+
+    @EntityGraph(attributePaths = {"student.user", "course"})
+    @Query("""
+            select enrollment
+            from Enrollment enrollment
+            where (:courseId is null or enrollment.course.id = :courseId)
+              and (:teacherUserId is null or enrollment.course.teacher.user.id = :teacherUserId)
+              and (
+                    :query = ''
+                    or lower(enrollment.student.studentNumber) like :query
+                    or lower(enrollment.student.user.email) like :query
+                    or lower(enrollment.student.user.firstName) like :query
+                    or lower(enrollment.student.user.lastName) like :query
+                  )
+            """)
+    Page<Enrollment> searchForStudentAttendanceReport(
+            @Param("courseId") UUID courseId,
+            @Param("teacherUserId") UUID teacherUserId,
+            @Param("query") String query,
+            Pageable pageable
+    );
 
     @Query("""
             select enrollment.student.id

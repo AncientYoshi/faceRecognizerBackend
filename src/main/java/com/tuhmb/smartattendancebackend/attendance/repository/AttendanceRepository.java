@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Instant;
+import java.util.List;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface AttendanceRepository
         extends JpaRepository<Attendance, UUID>, JpaSpecificationExecutor<Attendance> {
@@ -25,5 +28,19 @@ public interface AttendanceRepository
             UUID teacherId,
             Instant from,
             Instant to
+    );
+
+    @Query("""
+            select attendance.student.id as studentId,
+                   attendance.course.id as courseId,
+                   count(distinct attendance.session.id) as presentSessions
+            from Attendance attendance
+            where attendance.session.id in :sessionIds
+              and attendance.student.id in :studentIds
+            group by attendance.student.id, attendance.course.id
+            """)
+    List<StudentAttendanceCountProjection> countPresentSessionsByStudentAndCourse(
+            @Param("sessionIds") List<UUID> sessionIds,
+            @Param("studentIds") List<UUID> studentIds
     );
 }

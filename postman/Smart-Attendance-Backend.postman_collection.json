@@ -302,6 +302,24 @@
         {
           "name": "Assign Student to Department",
           "request": { "method": "PUT", "header": [], "url": "{{baseUrl}}/departments/{{departmentId}}/students/{{studentId}}" }
+        },
+        {
+          "name": "List Assigned Teachers in Department",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/departments/{{departmentId}}/teachers?query=&page=0&size=20",
+            "description": "Admin-only paginated list of teacher profiles assigned to the selected department."
+          }
+        },
+        {
+          "name": "List Assigned Students in Department",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/departments/{{departmentId}}/students?query=&page=0&size=20",
+            "description": "Admin-only paginated list of student profiles assigned to the selected department."
+          }
         }
       ]
     },
@@ -596,6 +614,42 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/reports/attendance?courseId={{courseId}}&page=0&size=50"
+          }
+        },
+        {
+          "name": "Student Attendance Percentages - Weekly (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/reports/attendance/students?period=WEEK&date={{today}}&courseId={{courseId}}&page=0&size=20"
+          }
+        },
+        {
+          "name": "Student Attendance Percentages - Monthly (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/reports/attendance/students?period=MONTH&date={{today}}&courseId={{courseId}}&query=&page=0&size=20"
+          }
+        },
+        {
+          "name": "Export Weekly Student Percentages PDF (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/pdf" }],
+            "url": "{{baseUrl}}/reports/attendance/students/export/pdf?period=WEEK&date={{today}}&courseId={{courseId}}"
+          }
+        },
+        {
+          "name": "Export Monthly Student Percentages Excel (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+            "url": "{{baseUrl}}/reports/attendance/students/export/excel?period=MONTH&date={{today}}&courseId={{courseId}}"
           }
         },
         {

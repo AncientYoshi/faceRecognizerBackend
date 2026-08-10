@@ -4,6 +4,8 @@ import com.tuhmb.smartattendancebackend.audit.domain.AuditAction;
 import com.tuhmb.smartattendancebackend.audit.service.AuditService;
 import com.tuhmb.smartattendancebackend.academic.api.DepartmentRequest;
 import com.tuhmb.smartattendancebackend.academic.api.DepartmentResponse;
+import com.tuhmb.smartattendancebackend.academic.api.DepartmentStudentResponse;
+import com.tuhmb.smartattendancebackend.academic.api.DepartmentTeacherResponse;
 import com.tuhmb.smartattendancebackend.academic.api.ProfileAssignmentResponse;
 import com.tuhmb.smartattendancebackend.academic.domain.Department;
 import com.tuhmb.smartattendancebackend.academic.repository.CourseRepository;
@@ -75,6 +77,40 @@ public class DepartmentService {
     @Transactional(readOnly = true)
     public DepartmentResponse get(UUID id) {
         return toResponse(findDepartment(id));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<DepartmentTeacherResponse> listTeachers(
+            UUID departmentId,
+            String query,
+            int page,
+            int size
+    ) {
+        findDepartment(departmentId);
+        String pattern = searchPattern(query);
+        Page<Teacher> result = teacherRepository.searchDepartmentTeachers(
+                departmentId,
+                pattern,
+                PageRequest.of(page, size, Sort.by("employeeNumber"))
+        );
+        return PageResponse.from(result.map(DepartmentTeacherResponse::from));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<DepartmentStudentResponse> listStudents(
+            UUID departmentId,
+            String query,
+            int page,
+            int size
+    ) {
+        findDepartment(departmentId);
+        String pattern = searchPattern(query);
+        Page<Student> result = studentRepository.searchDepartmentStudents(
+                departmentId,
+                pattern,
+                PageRequest.of(page, size, Sort.by("studentNumber"))
+        );
+        return PageResponse.from(result.map(DepartmentStudentResponse::from));
     }
 
     @Transactional
@@ -218,6 +254,11 @@ public class DepartmentService {
 
     private String normalizeCode(String code) {
         return code.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String searchPattern(String query) {
+        String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        return normalized.isBlank() ? "" : "%" + normalized + "%";
     }
 
     private String trimToNull(String value) {
