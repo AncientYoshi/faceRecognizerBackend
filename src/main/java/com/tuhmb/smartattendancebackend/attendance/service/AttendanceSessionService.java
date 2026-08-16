@@ -13,6 +13,7 @@ import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionR
 import com.tuhmb.smartattendancebackend.common.api.PageResponse;
 import com.tuhmb.smartattendancebackend.common.exception.ConflictException;
 import com.tuhmb.smartattendancebackend.common.exception.ResourceNotFoundException;
+import com.tuhmb.smartattendancebackend.notification.service.AttendanceSessionReminderPublisher;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,17 +35,20 @@ public class AttendanceSessionService {
     private final CourseService courseService;
     private final AcademicAccessService accessService;
     private final AuditService auditService;
+    private final AttendanceSessionReminderPublisher reminderPublisher;
 
     public AttendanceSessionService(
             AttendanceSessionRepository sessionRepository,
             CourseService courseService,
             AcademicAccessService accessService,
-            AuditService auditService
+            AuditService auditService,
+            AttendanceSessionReminderPublisher reminderPublisher
     ) {
         this.sessionRepository = sessionRepository;
         this.courseService = courseService;
         this.accessService = accessService;
         this.auditService = auditService;
+        this.reminderPublisher = reminderPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -114,6 +118,7 @@ public class AttendanceSessionService {
     public AttendanceSessionResponse start(UUID id, Jwt jwt) {
         AttendanceSession session = findAuthorizedSession(id, jwt);
         session.start();
+        reminderPublisher.publish(session);
         return AttendanceSessionResponse.from(session);
     }
 

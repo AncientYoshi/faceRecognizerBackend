@@ -31,8 +31,10 @@ import java.util.Set;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.containsString;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -186,6 +188,8 @@ class AuthFlowIntegrationTest {
 
         mockMvc.perform(get("/public/departments"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("max-age=300")))
+                .andExpect(header().string("Cache-Control", containsString("public")))
                 .andExpect(jsonPath("$[0].id").value(department.getId().toString()))
                 .andExpect(jsonPath("$[0].code").value("REG-CSE"))
                 .andExpect(jsonPath("$[0].name").value("Registration Computer Science"))

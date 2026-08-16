@@ -256,6 +256,27 @@ SCHEDULED -> CANCELLED
 
 Only a `SCHEDULED` session can be edited or deleted.
 
+### Student email reminder when attendance starts
+
+When mail notifications are enabled, `POST /attendance-sessions/{id}/start` sends an individual reminder to every enabled student enrolled in the course. Messages are dispatched after the session transaction commits and contain a direct link to `/student/scan/{sessionId}`. A mail delivery failure is logged and does not roll back or close the active session.
+
+Configure any SMTP provider with environment variables:
+
+```bash
+MAIL_NOTIFICATIONS_ENABLED=true
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_USERNAME=no-reply@example.com
+MAIL_PASSWORD=replace-with-an-smtp-password
+MAIL_FROM=no-reply@example.com
+MAIL_SMTP_AUTH=true
+MAIL_STARTTLS_ENABLED=true
+MAIL_STARTTLS_REQUIRED=true
+FRONTEND_BASE_URL=https://smart-attendance.paiswanpyae2002.workers.dev
+```
+
+For Gmail SMTP, use `smtp.gmail.com`, port `587`, and a Google App Password rather than the account's normal password. Keep SMTP credentials only in the server environment file. Notifications default to disabled when `MAIL_NOTIFICATIONS_ENABLED` is missing or false.
+
 ## Face registration and attendance verification
 
 Face registration is available to the student who owns the profile or an administrator:

@@ -22,6 +22,16 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
 
     Page<Enrollment> findByStudentId(UUID studentId, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"student.user"})
+    @Query("""
+            select enrollment
+            from Enrollment enrollment
+            where enrollment.course.id = :courseId
+              and enrollment.student.user.enabled = true
+            order by enrollment.student.user.email
+            """)
+    List<Enrollment> findEnabledStudentsByCourseId(@Param("courseId") UUID courseId);
+
     long countByCourseId(UUID courseId);
 
     long countByStudentId(UUID studentId);

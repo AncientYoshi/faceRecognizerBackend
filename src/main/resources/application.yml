@@ -19,6 +19,21 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_STARTTLS_ENABLED:true}
+            required: ${MAIL_STARTTLS_REQUIRED:true}
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_TIMEOUT:10000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:10000}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -60,6 +75,11 @@ app:
   hardware:
     device-id: ${HARDWARE_DEVICE_ID:CLASSROOM-01}
     device-key: ${HARDWARE_DEVICE_KEY:change-this-device-secret}
+  notifications:
+    mail:
+      enabled: ${MAIL_NOTIFICATIONS_ENABLED:false}
+      from: ${MAIL_FROM:${MAIL_USERNAME:}}
+      frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:4200}
 
 logging:
   level:
