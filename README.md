@@ -10,6 +10,8 @@ Spring Boot is the core API for authentication, academic management, attendance,
 - Signed JWT access and refresh tokens
 - Refresh-token rotation, replay protection, and logout revocation
 - Role authorities (`ADMIN`, `TEACHER`, `STUDENT`)
+- Public `POST /auth/register` for student or teacher self-registration
+- Public `GET /public/departments` for the registration department selector
 - `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, and `GET /me`
 - Admin-only user CRUD with search and pagination
 - Automatic student/teacher profile creation when roles are assigned
@@ -88,6 +90,31 @@ Default service URLs:
 
 ## Authentication examples
 
+Load the department selector without authentication:
+
+```bash
+curl http://localhost:8080/public/departments
+```
+
+Register a student:
+
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "student@example.com",
+    "password": "student-password",
+    "firstName": "Alice",
+    "lastName": "Student",
+    "role": "STUDENT",
+    "studentNumber": "STU-001",
+    "employeeNumber": null,
+    "departmentId": "DEPARTMENT_UUID"
+  }'
+```
+
+For teacher registration, use `"role":"TEACHER"`, provide `employeeNumber`, and leave `studentNumber` null. Public registration accepts exactly one role and never accepts `ADMIN`. A user cannot have both `STUDENT` and `TEACHER` roles through either self-registration or admin user management. Registration returns the new user/profile and department details; call `/auth/login` afterward to obtain tokens.
+
 Login:
 
 ```bash
@@ -148,7 +175,7 @@ curl -X POST http://localhost:8080/users \
   }'
 ```
 
-`studentNumber` is required when assigning `STUDENT`, and `employeeNumber` is required when assigning `TEACHER`. Removing one of those roles removes its corresponding profile. The system-defined roles are seeded by Flyway and are intentionally not mutable.
+`studentNumber` is required when assigning `STUDENT`, and `employeeNumber` is required when assigning `TEACHER`. `STUDENT` and `TEACHER` are mutually exclusive. Removing one of those roles removes its corresponding profile. The system-defined roles are seeded by Flyway and are intentionally not mutable.
 
 The user response includes `studentId` and `teacherId`. These profile identifiers are used by the academic-management APIs.
 
@@ -156,6 +183,7 @@ The user response includes `studentId` and `teacherId`. These profile identifier
 
 Department APIs:
 
+- `GET /public/departments` — public registration selector
 - `GET /departments`
 - `GET /departments/{id}`
 - `POST /departments` — admin

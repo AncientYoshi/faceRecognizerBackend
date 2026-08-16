@@ -1,6 +1,7 @@
 package com.tuhmb.smartattendancebackend.audit.domain;
 
 public enum AuditAction {
+    REGISTER,
     LOGIN,
     ATTENDANCE_RECORDED,
     UPDATE,

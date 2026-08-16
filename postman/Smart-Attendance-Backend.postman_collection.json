@@ -48,6 +48,10 @@
     { "key": "teacherPassword", "value": "teacher-password" },
     { "key": "studentEmail", "value": "postman.student@example.com" },
     { "key": "studentPassword", "value": "student-password" },
+    { "key": "registrationStudentEmail", "value": "self.registered.student@example.com" },
+    { "key": "registrationStudentPassword", "value": "student-password" },
+    { "key": "registrationTeacherEmail", "value": "self.registered.teacher@example.com" },
+    { "key": "registrationTeacherPassword", "value": "teacher-password" },
     { "key": "departmentCode", "value": "CSE-PM" },
     { "key": "courseCode", "value": "CSE-PM-101" },
     { "key": "semester", "value": "FIRST" },
@@ -281,6 +285,36 @@
         {
           "name": "List Departments",
           "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/departments?query=&page=0&size=20" }
+        },
+        {
+          "name": "Public Department Selector",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/public/departments",
+            "description": "Public code/name department list for the login-page registration form."
+          }
+        },
+        {
+          "name": "Public Student Registration",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{registrationStudentEmail}}\",\n  \"password\": \"{{registrationStudentPassword}}\",\n  \"firstName\": \"Self Registered\",\n  \"lastName\": \"Student\",\n  \"role\": \"STUDENT\",\n  \"studentNumber\": \"SELF-STU-001\",\n  \"employeeNumber\": null,\n  \"departmentId\": \"{{departmentId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Public Teacher Registration",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{registrationTeacherEmail}}\",\n  \"password\": \"{{registrationTeacherPassword}}\",\n  \"firstName\": \"Self Registered\",\n  \"lastName\": \"Teacher\",\n  \"role\": \"TEACHER\",\n  \"studentNumber\": null,\n  \"employeeNumber\": \"SELF-TCH-001\",\n  \"departmentId\": \"{{departmentId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/auth/register"
+          }
         },
         {
           "name": "Get Department",

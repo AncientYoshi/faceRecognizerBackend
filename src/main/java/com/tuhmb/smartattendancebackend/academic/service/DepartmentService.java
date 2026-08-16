@@ -7,6 +7,7 @@ import com.tuhmb.smartattendancebackend.academic.api.DepartmentResponse;
 import com.tuhmb.smartattendancebackend.academic.api.DepartmentStudentResponse;
 import com.tuhmb.smartattendancebackend.academic.api.DepartmentTeacherResponse;
 import com.tuhmb.smartattendancebackend.academic.api.ProfileAssignmentResponse;
+import com.tuhmb.smartattendancebackend.academic.api.PublicDepartmentResponse;
 import com.tuhmb.smartattendancebackend.academic.domain.Department;
 import com.tuhmb.smartattendancebackend.academic.repository.CourseRepository;
 import com.tuhmb.smartattendancebackend.academic.repository.DepartmentRepository;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -77,6 +79,13 @@ public class DepartmentService {
     @Transactional(readOnly = true)
     public DepartmentResponse get(UUID id) {
         return toResponse(findDepartment(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PublicDepartmentResponse> publicList() {
+        return departmentRepository.findAllByOrderByCodeAsc().stream()
+                .map(PublicDepartmentResponse::from)
+                .toList();
     }
 
     @Transactional(readOnly = true)

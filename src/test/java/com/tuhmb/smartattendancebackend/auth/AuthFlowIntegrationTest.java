@@ -4,6 +4,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.tuhmb.smartattendancebackend.academic.repository.CourseRepository;
 import com.tuhmb.smartattendancebackend.academic.repository.DepartmentRepository;
 import com.tuhmb.smartattendancebackend.academic.repository.EnrollmentRepository;
+import com.tuhmb.smartattendancebackend.academic.domain.Department;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceRepository;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
@@ -13,6 +14,8 @@ import com.tuhmb.smartattendancebackend.user.domain.Role;
 import com.tuhmb.smartattendancebackend.user.domain.RoleName;
 import com.tuhmb.smartattendancebackend.user.repository.RoleRepository;
 import com.tuhmb.smartattendancebackend.user.repository.UserRepository;
+import com.tuhmb.smartattendancebackend.user.repository.StudentRepository;
+import com.tuhmb.smartattendancebackend.user.repository.TeacherRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +72,12 @@ class AuthFlowIntegrationTest {
     @Autowired
     private FaceRegistrationRepository faceRegistrationRepository;
 
+    @Autowired
+    private StudentRepository studentRepository;
+
+    @Autowired
+    private TeacherRepository teacherRepository;
+
     @BeforeEach
     void setUp() {
         attendanceRepository.deleteAll();
@@ -76,6 +85,8 @@ class AuthFlowIntegrationTest {
         sessionRepository.deleteAll();
         enrollmentRepository.deleteAll();
         courseRepository.deleteAll();
+        studentRepository.deleteAll();
+        teacherRepository.deleteAll();
         departmentRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         userRepository.deleteAll();
@@ -163,6 +174,110 @@ class AuthFlowIntegrationTest {
         mockMvc.perform(get("/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("unauthorized"));
+    }
+
+    @Test
+    void publicDepartmentListAndStudentTeacherRegistrationWork() throws Exception {
+        Department department = departmentRepository.save(new Department(
+                "REG-CSE",
+                "Registration Computer Science",
+                "Public registration department"
+        ));
+
+        mockMvc.perform(get("/public/departments"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(department.getId().toString()))
+                .andExpect(jsonPath("$[0].code").value("REG-CSE"))
+                .andExpect(jsonPath("$[0].name").value("Registration Computer Science"))
+                .andExpect(jsonPath("$[0].description").doesNotExist());
+
+        MvcResult registeredStudent = mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "new.student@example.com",
+                                  "password": "student-password",
+                                  "firstName": "New",
+                                  "lastName": "Student",
+                                  "role": "STUDENT",
+                                  "studentNumber": "REG-STU-001",
+                                  "employeeNumber": null,
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value("new.student@example.com"))
+                .andExpect(jsonPath("$.role").value("STUDENT"))
+                .andExpect(jsonPath("$.studentNumber").value("REG-STU-001"))
+                .andExpect(jsonPath("$.teacherId").doesNotExist())
+                .andExpect(jsonPath("$.departmentId").value(department.getId().toString()))
+                .andReturn();
+        String studentId = JsonPath.read(registeredStudent.getResponse().getContentAsString(), "$.studentId");
+        String studentToken = loginAccessToken("new.student@example.com", "student-password");
+
+        mockMvc.perform(get("/students/me").header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.studentId").value(studentId))
+                .andExpect(jsonPath("$.departmentId").value(department.getId().toString()))
+                .andExpect(jsonPath("$.departmentCode").value("REG-CSE"));
+
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "new.teacher@example.com",
+                                  "password": "teacher-password",
+                                  "firstName": "New",
+                                  "lastName": "Teacher",
+                                  "role": "TEACHER",
+                                  "studentNumber": null,
+                                  "employeeNumber": "REG-TCH-001",
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("TEACHER"))
+                .andExpect(jsonPath("$.employeeNumber").value("REG-TCH-001"))
+                .andExpect(jsonPath("$.studentId").doesNotExist())
+                .andExpect(jsonPath("$.departmentCode").value("REG-CSE"));
+
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "admin.registration@example.com",
+                                  "password": "admin-password",
+                                  "firstName": "Invalid",
+                                  "lastName": "Admin",
+                                  "role": "ADMIN",
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_request"));
+    }
+
+    @Test
+    void adminCannotAssignStudentAndTeacherRolesToOneUser() throws Exception {
+        String adminAccessToken = loginAccessToken("admin@example.com", "password123");
+
+        mockMvc.perform(post("/users")
+                        .header("Authorization", "Bearer " + adminAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "both.roles@example.com",
+                                  "password": "both-role-password",
+                                  "firstName": "Both",
+                                  "lastName": "Roles",
+                                  "roles": ["STUDENT", "TEACHER"],
+                                  "studentNumber": "BOTH-STU-001",
+                                  "employeeNumber": "BOTH-TCH-001"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("data_conflict"))
+                .andExpect(jsonPath("$.message").value("A user cannot have both STUDENT and TEACHER roles"));
     }
 
     @Test

@@ -47,7 +47,7 @@ public class AppUser extends BaseEntity {
         this.passwordHash = passwordHash;
         this.firstName = firstName;
         this.lastName = lastName;
-        this.roles.addAll(roles);
+        replaceRoles(roles);
     }
 
     public String getEmail() {
@@ -85,11 +85,20 @@ public class AppUser extends BaseEntity {
         this.firstName = firstName;
         this.lastName = lastName;
         this.enabled = enabled;
-        this.roles.clear();
-        this.roles.addAll(roles);
+        replaceRoles(roles);
     }
 
     public void changePassword(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    private void replaceRoles(Set<Role> newRoles) {
+        boolean student = newRoles.stream().anyMatch(role -> role.getName() == RoleName.STUDENT);
+        boolean teacher = newRoles.stream().anyMatch(role -> role.getName() == RoleName.TEACHER);
+        if (student && teacher) {
+            throw new IllegalArgumentException("A user cannot have both STUDENT and TEACHER roles");
+        }
+        roles.clear();
+        roles.addAll(newRoles);
     }
 }

@@ -197,6 +197,9 @@ public class UserManagementService {
             String studentNumber,
             String employeeNumber
     ) {
+        if (roles.contains(RoleName.STUDENT) && roles.contains(RoleName.TEACHER)) {
+            throw new ConflictException("A user cannot have both STUDENT and TEACHER roles");
+        }
         if (roles.contains(RoleName.STUDENT) && isBlank(studentNumber)) {
             throw new ConflictException("studentNumber is required for the STUDENT role");
         }
