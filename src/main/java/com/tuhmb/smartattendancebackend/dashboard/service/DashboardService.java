@@ -8,6 +8,7 @@ import com.tuhmb.smartattendancebackend.academic.repository.EnrollmentRepository
 import com.tuhmb.smartattendancebackend.attendance.api.AttendanceSessionResponse;
 import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSession;
 import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSessionStatus;
+import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceStatus;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceRepository;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.common.exception.ResourceNotFoundException;
@@ -15,6 +16,10 @@ import com.tuhmb.smartattendancebackend.dashboard.api.AdminDashboardResponse;
 import com.tuhmb.smartattendancebackend.dashboard.api.DepartmentDashboardStatistic;
 import com.tuhmb.smartattendancebackend.dashboard.api.TeacherCourseSummary;
 import com.tuhmb.smartattendancebackend.dashboard.api.TeacherDashboardResponse;
+import com.tuhmb.smartattendancebackend.dashboard.api.StudentDashboardResponse;
+import com.tuhmb.smartattendancebackend.settings.domain.SystemSetting;
+import com.tuhmb.smartattendancebackend.settings.repository.SystemSettingRepository;
+import com.tuhmb.smartattendancebackend.user.domain.Student;
 import com.tuhmb.smartattendancebackend.user.domain.Teacher;
 import com.tuhmb.smartattendancebackend.user.repository.StudentRepository;
 import com.tuhmb.smartattendancebackend.user.repository.TeacherRepository;
@@ -28,6 +33,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +48,7 @@ public class DashboardService {
     private final EnrollmentRepository enrollmentRepository;
     private final AttendanceRepository attendanceRepository;
     private final AttendanceSessionRepository sessionRepository;
+    private final SystemSettingRepository settingRepository;
     private final ZoneId zoneId;
 
     public DashboardService(
@@ -52,6 +59,7 @@ public class DashboardService {
             EnrollmentRepository enrollmentRepository,
             AttendanceRepository attendanceRepository,
             AttendanceSessionRepository sessionRepository,
+            SystemSettingRepository settingRepository,
             @Value("${app.time-zone:Asia/Yangon}") String timeZone
     ) {
         this.studentRepository = studentRepository;
@@ -61,6 +69,7 @@ public class DashboardService {
         this.enrollmentRepository = enrollmentRepository;
         this.attendanceRepository = attendanceRepository;
         this.sessionRepository = sessionRepository;
+        this.settingRepository = settingRepository;
         this.zoneId = ZoneId.of(timeZone);
     }
 
@@ -134,6 +143,76 @@ public class DashboardService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public StudentDashboardResponse studentDashboard(LocalDate date, Jwt jwt) {
+        UUID userId = parseSubject(jwt, "Authenticated student was not found");
+        Student student = studentRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student profile was not found"));
+        LocalDate today = LocalDate.now(zoneId);
+        LocalDate effectiveDate = date == null ? today : date;
+        Instant now = Instant.now();
+        Instant requestedDayEnd = effectiveDate.plusDays(1).atStartOfDay(zoneId).toInstant();
+        Instant asOf = requestedDayEnd.isBefore(now) ? requestedDayEnd : now;
+
+        List<AttendanceSessionResponse> todaySessions = sessionRepository.findStudentSessionsForDate(
+                        student.getId(),
+                        effectiveDate,
+                        AttendanceSessionStatus.CANCELLED
+                ).stream()
+                .map(AttendanceSessionResponse::from)
+                .toList();
+
+        AttendanceTotals overall = totals(student.getId(), asOf);
+        YearMonth currentMonth = YearMonth.from(effectiveDate);
+        AttendanceTotals currentMonthTotals = totals(
+                student.getId(),
+                currentMonth.atDay(1),
+                currentMonth.atEndOfMonth(),
+                asOf
+        );
+        YearMonth previousMonth = currentMonth.minusMonths(1);
+        AttendanceTotals previousMonthTotals = totals(
+                student.getId(),
+                previousMonth.atDay(1),
+                previousMonth.atEndOfMonth(),
+                asOf
+        );
+
+        BigDecimal overallPercentage = percentage(overall.present(), overall.eligible());
+        BigDecimal currentMonthPercentage = percentage(
+                currentMonthTotals.present(),
+                currentMonthTotals.eligible()
+        );
+        BigDecimal previousMonthPercentage = percentage(
+                previousMonthTotals.present(),
+                previousMonthTotals.eligible()
+        );
+        String currentSemester = settingValue("CURRENT_SEMESTER");
+        String currentAcademicYear = settingValue("CURRENT_ACADEMIC_YEAR");
+        BigDecimal requiredPercentage = new BigDecimal(settingValue("ATTENDANCE_THRESHOLD"))
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(2, RoundingMode.HALF_UP);
+
+        return new StudentDashboardResponse(
+                overallPercentage,
+                currentMonthPercentage,
+                previousMonthPercentage,
+                currentMonthPercentage.subtract(previousMonthPercentage).setScale(2, RoundingMode.HALF_UP),
+                overall.present(),
+                overall.eligible(),
+                overall.present(),
+                Math.max(0, overall.eligible() - overall.present()),
+                todaySessions.size(),
+                enrollmentRepository.countCurrentTermCourses(
+                        student.getId(),
+                        currentSemester,
+                        currentAcademicYear
+                ),
+                requiredPercentage,
+                todaySessions
+        );
+    }
+
     private DepartmentDashboardStatistic departmentStatistic(Department department) {
         return new DepartmentDashboardStatistic(
                 department.getId(),
@@ -160,11 +239,71 @@ public class DashboardService {
                 .divide(BigDecimal.valueOf(expected), 4, RoundingMode.HALF_UP);
     }
 
+    private AttendanceTotals totals(UUID studentId, Instant asOf) {
+        long eligible = sessionRepository.countStudentEligibleSessions(
+                studentId,
+                AttendanceSessionStatus.CANCELLED,
+                AttendanceSessionStatus.CLOSED,
+                asOf
+        );
+        long present = attendanceRepository.countStudentPresentEligibleSessions(
+                studentId,
+                AttendanceStatus.PRESENT,
+                AttendanceSessionStatus.CANCELLED,
+                AttendanceSessionStatus.CLOSED,
+                asOf
+        );
+        return new AttendanceTotals(eligible, Math.min(present, eligible));
+    }
+
+    private AttendanceTotals totals(UUID studentId, LocalDate from, LocalDate to, Instant asOf) {
+        long eligible = sessionRepository.countStudentEligibleSessionsBetween(
+                studentId,
+                from,
+                to,
+                AttendanceSessionStatus.CANCELLED,
+                AttendanceSessionStatus.CLOSED,
+                asOf
+        );
+        long present = attendanceRepository.countStudentPresentEligibleSessionsBetween(
+                studentId,
+                from,
+                to,
+                AttendanceStatus.PRESENT,
+                AttendanceSessionStatus.CANCELLED,
+                AttendanceSessionStatus.CLOSED,
+                asOf
+        );
+        return new AttendanceTotals(eligible, Math.min(present, eligible));
+    }
+
+    private BigDecimal percentage(long present, long eligible) {
+        if (eligible == 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.valueOf(present)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(eligible), 2, RoundingMode.HALF_UP);
+    }
+
+    private String settingValue(String key) {
+        SystemSetting setting = settingRepository.findByKeyIgnoreCase(key)
+                .orElseThrow(() -> new ResourceNotFoundException("System setting " + key + " was not found"));
+        return setting.getValue().trim();
+    }
+
     private UUID parseSubject(Jwt jwt) {
+        return parseSubject(jwt, "Authenticated teacher was not found");
+    }
+
+    private UUID parseSubject(Jwt jwt, String message) {
         try {
             return UUID.fromString(jwt.getSubject());
         } catch (IllegalArgumentException exception) {
-            throw new ResourceNotFoundException("Authenticated teacher was not found");
+            throw new ResourceNotFoundException(message);
         }
+    }
+
+    private record AttendanceTotals(long eligible, long present) {
     }
 }

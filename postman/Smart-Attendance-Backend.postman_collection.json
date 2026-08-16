@@ -626,6 +626,15 @@
             "header": [],
             "url": "{{baseUrl}}/dashboard/teacher"
           }
+        },
+        {
+          "name": "Student Dashboard",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/dashboard/student?date={{today}}"
+          }
         }
       ]
     },

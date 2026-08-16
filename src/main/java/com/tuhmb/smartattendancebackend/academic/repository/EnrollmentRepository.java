@@ -26,6 +26,19 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
 
     long countByStudentId(UUID studentId);
 
+    @Query("""
+            select count(enrollment)
+            from Enrollment enrollment
+            where enrollment.student.id = :studentId
+              and lower(enrollment.course.semester) = lower(:semester)
+              and lower(enrollment.course.academicYear) = lower(:academicYear)
+            """)
+    long countCurrentTermCourses(
+            @Param("studentId") UUID studentId,
+            @Param("semester") String semester,
+            @Param("academicYear") String academicYear
+    );
+
     @EntityGraph(attributePaths = {"student.user", "course"})
     @Query("""
             select enrollment

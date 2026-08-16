@@ -320,6 +320,7 @@ Dashboard APIs:
 
 - `GET /dashboard/admin` — admin
 - `GET /dashboard/teacher` — teacher
+- `GET /dashboard/student?date=YYYY-MM-DD` — authenticated student; `date` defaults to today
 
 Report APIs:
 
@@ -346,6 +347,15 @@ curl -OJ "http://localhost:8080/reports/attendance/export/excel?departmentId=DEP
 ```
 
 The attendance rate is `recorded attendance / expected attendance`. Expected attendance is calculated from eligible sessions and course enrollments, so the dashboard and report denominator remains meaningful when attendance is missing.
+
+The student dashboard is calculated from the complete attendance history and does not depend on a paginated `/attendance` response:
+
+```bash
+curl "http://localhost:8080/dashboard/student?date=2026-08-16" \
+  -H "Authorization: Bearer STUDENT_ACCESS_TOKEN"
+```
+
+It returns overall, current-month, and previous-month attendance percentages; monthly change; present, absent, and eligible-session totals; the requested day's sessions; the configured attendance threshold; and the student's current-term course count. An eligible session is a non-cancelled enrolled-course session that is closed or whose end time has passed. Because attendance currently supports only `PRESENT`, absence is derived as `eligibleSessions - presentCount`; there is no late value. Current-term courses use `CURRENT_SEMESTER` and `CURRENT_ACADEMIC_YEAR`, and the required percentage uses `ATTENDANCE_THRESHOLD`.
 
 Teachers can list every enrolled student and see present, absent, total-session, and percentage values for one of their assigned courses:
 
