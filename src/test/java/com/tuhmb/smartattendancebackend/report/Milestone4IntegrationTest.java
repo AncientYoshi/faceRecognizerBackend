@@ -37,7 +37,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Set;
 import java.util.UUID;
 
@@ -117,7 +119,7 @@ class Milestone4IntegrationTest {
             Teacher teacher = new Teacher(teacherUser, "M4-TCH-001");
             teacher.assignDepartment(department);
             teacherRepository.save(teacher);
-            Student student = new Student(studentUser, "M4-STU-001");
+            Student student = new Student(studentUser, "M4-STU-001", 5);
             student.assignDepartment(department);
             studentRepository.save(student);
             Course course = courseRepository.save(new Course(
@@ -125,6 +127,7 @@ class Milestone4IntegrationTest {
                     "Administration and Reporting",
                     "FIRST",
                     "2026-2027",
+                    5,
                     department,
                     teacher
             ));
@@ -135,7 +138,8 @@ class Milestone4IntegrationTest {
                     teacher,
                     LocalDate.now(ZoneId.of("Asia/Yangon")),
                     now.minusSeconds(120),
-                    now.plusSeconds(3600)
+                    now.plusSeconds(3600),
+                    3
             );
             session.start();
             sessionRepository.save(session);
@@ -159,7 +163,7 @@ class Milestone4IntegrationTest {
         mockMvc.perform(get("/dashboard/admin").header("Authorization", bearer(adminToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalStudents").value(1))
-                .andExpect(jsonPath("$.todayAttendance").value(1))
+                .andExpect(jsonPath("$.todayAttendance").value(3))
                 .andExpect(jsonPath("$.attendanceRate").value(1.0));
 
         mockMvc.perform(get("/dashboard/teacher").header("Authorization", bearer(teacherToken)))
@@ -173,7 +177,7 @@ class Milestone4IntegrationTest {
                         .param("studentId", studentId.toString())
                         .header("Authorization", bearer(adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalRecords").value(1))
+                .andExpect(jsonPath("$.totalRecords").value(3))
                 .andExpect(jsonPath("$.records.totalElements").value(1));
 
         mockMvc.perform(get("/reports/attendance/export/pdf")
@@ -206,53 +210,69 @@ class Milestone4IntegrationTest {
     }
 
     @Test
-    void teacherCanListWeeklyAndMonthlyAttendancePercentageForEveryEnrolledStudent() throws Exception {
+    void teacherCanCalculateThreeConsecutiveCallsAsNineOfTwelveForTheMonth() throws Exception {
+        LocalDate referenceDate = YearMonth.now(ZoneId.of("Asia/Yangon"))
+                .minusMonths(1)
+                .atDay(15);
         transactionTemplate.executeWithoutResult(status -> {
             Course course = courseRepository.findById(courseId).orElseThrow();
-            Instant now = Instant.now();
-            sessionRepository.save(new AttendanceSession(
-                    course,
-                    course.getTeacher(),
-                    LocalDate.now(ZoneId.of("Asia/Yangon")),
-                    now.minusSeconds(7200),
-                    now.minusSeconds(3600)
-            ));
+            Student student = studentRepository.findById(studentId).orElseThrow();
+            LocalDate monday = YearMonth.from(referenceDate).atDay(1)
+                    .with(TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+            for (int week = 0; week < 4; week++) {
+                LocalDate sessionDate = monday.plusWeeks(week);
+                Instant start = sessionDate.atTime(9, 0).atZone(ZoneId.of("Asia/Yangon")).toInstant();
+                AttendanceSession session = sessionRepository.save(new AttendanceSession(
+                        course,
+                        course.getTeacher(),
+                        sessionDate,
+                        start,
+                        start.plusSeconds(10_800),
+                        3
+                ));
+                if (week < 3) {
+                    attendanceRepository.save(new Attendance(
+                            student,
+                            course,
+                            session,
+                            new BigDecimal("0.95000"),
+                            start.plusSeconds(300)
+                    ));
+                }
+            }
         });
         String teacherToken = login("teacher4@example.com", "teacher-password");
 
         mockMvc.perform(get("/reports/attendance/students")
-                        .param("period", "WEEK")
+                        .param("period", "MONTH")
+                        .param("date", referenceDate.toString())
                         .param("courseId", courseId.toString())
+                        .param("studyYear", "5")
                         .param("query", "M4-STU-001")
                         .header("Authorization", bearer(teacherToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.period").value("WEEK"))
+                .andExpect(jsonPath("$.period").value("MONTH"))
                 .andExpect(jsonPath("$.students.totalElements").value(1))
                 .andExpect(jsonPath("$.students.content[0].studentId").value(studentId.toString()))
                 .andExpect(jsonPath("$.students.content[0].courseId").value(courseId.toString()))
-                .andExpect(jsonPath("$.students.content[0].totalSessions").value(2))
-                .andExpect(jsonPath("$.students.content[0].presentSessions").value(1))
-                .andExpect(jsonPath("$.students.content[0].absentSessions").value(1))
-                .andExpect(jsonPath("$.students.content[0].attendancePercentage").value(50.0));
-
-        mockMvc.perform(get("/reports/attendance/students")
-                        .param("period", "MONTH")
-                        .param("courseId", courseId.toString())
-                        .header("Authorization", bearer(teacherToken)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.period").value("MONTH"))
-                .andExpect(jsonPath("$.students.content[0].attendancePercentage").value(50.0));
+                .andExpect(jsonPath("$.students.content[0].studyYear").value(5))
+                .andExpect(jsonPath("$.students.content[0].totalSessions").value(12))
+                .andExpect(jsonPath("$.students.content[0].presentSessions").value(9))
+                .andExpect(jsonPath("$.students.content[0].absentSessions").value(3))
+                .andExpect(jsonPath("$.students.content[0].attendancePercentage").value(75.0));
 
         mockMvc.perform(get("/reports/attendance/students/export/pdf")
-                        .param("period", "WEEK")
+                        .param("period", "MONTH")
+                        .param("date", referenceDate.toString())
                         .param("courseId", courseId.toString())
                         .header("Authorization", bearer(teacherToken)))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", containsString("student-attendance-week-")))
+                .andExpect(header().string("Content-Disposition", containsString("student-attendance-month-")))
                 .andExpect(content().contentType("application/pdf"));
 
         mockMvc.perform(get("/reports/attendance/students/export/excel")
                         .param("period", "MONTH")
+                        .param("date", referenceDate.toString())
                         .param("courseId", courseId.toString())
                         .header("Authorization", bearer(teacherToken)))
                 .andExpect(status().isOk())

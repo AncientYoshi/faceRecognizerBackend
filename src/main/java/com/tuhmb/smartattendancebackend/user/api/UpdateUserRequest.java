@@ -2,6 +2,8 @@ package com.tuhmb.smartattendancebackend.user.api;
 
 import com.tuhmb.smartattendancebackend.user.domain.RoleName;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
@@ -16,6 +18,7 @@ public record UpdateUserRequest(
         boolean enabled,
         @NotEmpty Set<RoleName> roles,
         @Size(max = 80) String studentNumber,
+        @Min(1) @Max(6) Integer studyYear,
         @Size(max = 80) String employeeNumber
 ) {
 }

@@ -21,6 +21,9 @@ public class Student extends BaseEntity {
     @Column(name = "student_number", nullable = false, unique = true, length = 80)
     private String studentNumber;
 
+    @Column(name = "study_year")
+    private Integer studyYear;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id")
     private Department department;
@@ -29,8 +32,13 @@ public class Student extends BaseEntity {
     }
 
     public Student(AppUser user, String studentNumber) {
+        this(user, studentNumber, null);
+    }
+
+    public Student(AppUser user, String studentNumber, Integer studyYear) {
         this.user = user;
         this.studentNumber = studentNumber;
+        this.studyYear = studyYear;
     }
 
     public AppUser getUser() {
@@ -43,6 +51,14 @@ public class Student extends BaseEntity {
 
     public void updateStudentNumber(String studentNumber) {
         this.studentNumber = studentNumber;
+    }
+
+    public Integer getStudyYear() {
+        return studyYear;
+    }
+
+    public void updateStudyYear(Integer studyYear) {
+        this.studyYear = studyYear;
     }
 
     public Department getDepartment() {

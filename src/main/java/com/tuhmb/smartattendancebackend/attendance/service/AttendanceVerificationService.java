@@ -74,6 +74,9 @@ public class AttendanceVerificationService {
         if (context == null) {
             throw new IllegalStateException("Verification context could not be created");
         }
+        if (context.existingAttendance() != null) {
+            return AttendanceVerificationResponse.alreadyRecorded(context.existingAttendance());
+        }
 
         VerifyFaceAiResponse aiResponse = faceAiClient.verify(context.studentId().toString(), image);
         validateAiResponse(aiResponse);
@@ -95,7 +98,11 @@ public class AttendanceVerificationService {
             }
             return response;
         } catch (DataIntegrityViolationException exception) {
-            throw new ConflictException("Attendance has already been recorded for this session");
+            return attendanceRepository.findBySessionIdAndStudentId(context.sessionId(), context.studentId())
+                    .map(AttendanceVerificationResponse::alreadyRecorded)
+                    .orElseThrow(() -> new ConflictException(
+                            "Attendance has already been recorded for this session"
+                    ));
         }
     }
 
@@ -103,8 +110,13 @@ public class AttendanceVerificationService {
         Student student = studentRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Student profile was not found"));
         AttendanceSession session = findSession(sessionId);
+        Attendance existing = attendanceRepository.findBySessionIdAndStudentId(session.getId(), student.getId())
+                .orElse(null);
+        if (existing != null) {
+            return new VerificationContext(student.getId(), session.getId(), existing);
+        }
         validateEligibility(student, session, now);
-        return new VerificationContext(student.getId(), session.getId());
+        return new VerificationContext(student.getId(), session.getId(), null);
     }
 
     private AttendanceVerificationResponse recordAttendance(
@@ -182,6 +194,6 @@ public class AttendanceVerificationService {
         }
     }
 
-    private record VerificationContext(UUID studentId, UUID sessionId) {
+    private record VerificationContext(UUID studentId, UUID sessionId, Attendance existingAttendance) {
     }
 }

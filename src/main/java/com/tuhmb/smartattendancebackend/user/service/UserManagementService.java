@@ -87,7 +87,7 @@ public class UserManagementService {
         String email = normalizeEmail(request.email());
         ensureEmailAvailable(email, null);
         Set<Role> roles = resolveRoles(request.roles());
-        validateProfileNumbers(request.roles(), request.studentNumber(), request.employeeNumber());
+        validateProfileFields(request.roles(), request.studentNumber(), request.studyYear(), request.employeeNumber());
 
         AppUser user = userRepository.save(new AppUser(
                 email,
@@ -96,7 +96,7 @@ public class UserManagementService {
                 request.lastName().trim(),
                 roles
         ));
-        syncProfiles(user, request.roles(), request.studentNumber(), request.employeeNumber());
+        syncProfiles(user, request.roles(), request.studentNumber(), request.studyYear(), request.employeeNumber());
         return toResponse(user);
     }
 
@@ -105,7 +105,7 @@ public class UserManagementService {
         AppUser user = findUser(id);
         String email = normalizeEmail(request.email());
         ensureEmailAvailable(email, id);
-        validateProfileNumbers(request.roles(), request.studentNumber(), request.employeeNumber());
+        validateProfileFields(request.roles(), request.studentNumber(), request.studyYear(), request.employeeNumber());
         Set<Role> roles = resolveRoles(request.roles());
 
         user.updateProfile(
@@ -118,7 +118,7 @@ public class UserManagementService {
         if (request.password() != null && !request.password().isBlank()) {
             user.changePassword(passwordEncoder.encode(request.password()));
         }
-        syncProfiles(user, request.roles(), request.studentNumber(), request.employeeNumber());
+        syncProfiles(user, request.roles(), request.studentNumber(), request.studyYear(), request.employeeNumber());
         auditService.record(AuditAction.UPDATE, "AppUser", id, "User account updated");
         return toResponse(user);
     }
@@ -137,6 +137,7 @@ public class UserManagementService {
             AppUser user,
             Set<RoleName> roles,
             String studentNumber,
+            Integer studyYear,
             String employeeNumber
     ) {
         if (roles.contains(RoleName.STUDENT)) {
@@ -144,9 +145,10 @@ public class UserManagementService {
             Student student = studentRepository.findByUserId(user.getId()).orElse(null);
             ensureStudentNumberAvailable(normalized, student);
             if (student == null) {
-                studentRepository.save(new Student(user, normalized));
+                studentRepository.save(new Student(user, normalized, studyYear));
             } else {
                 student.updateStudentNumber(normalized);
+                student.updateStudyYear(studyYear);
             }
         } else {
             studentRepository.deleteByUserId(user.getId());
@@ -173,6 +175,7 @@ public class UserManagementService {
                 user,
                 student == null ? null : student.getId(),
                 student == null ? null : student.getStudentNumber(),
+                student == null ? null : student.getStudyYear(),
                 teacher == null ? null : teacher.getId(),
                 teacher == null ? null : teacher.getEmployeeNumber()
         );
@@ -192,9 +195,10 @@ public class UserManagementService {
         return roles;
     }
 
-    private void validateProfileNumbers(
+    private void validateProfileFields(
             Set<RoleName> roles,
             String studentNumber,
+            Integer studyYear,
             String employeeNumber
     ) {
         if (roles.contains(RoleName.STUDENT) && roles.contains(RoleName.TEACHER)) {
@@ -203,8 +207,14 @@ public class UserManagementService {
         if (roles.contains(RoleName.STUDENT) && isBlank(studentNumber)) {
             throw new ConflictException("studentNumber is required for the STUDENT role");
         }
+        if (roles.contains(RoleName.STUDENT) && studyYear == null) {
+            throw new ConflictException("studyYear is required for the STUDENT role");
+        }
         if (roles.contains(RoleName.TEACHER) && isBlank(employeeNumber)) {
             throw new ConflictException("employeeNumber is required for the TEACHER role");
+        }
+        if (!roles.contains(RoleName.STUDENT) && studyYear != null) {
+            throw new ConflictException("studyYear is only allowed for the STUDENT role");
         }
     }
 

@@ -15,6 +15,7 @@ public record UserResponse(
         List<String> roles,
         UUID studentId,
         String studentNumber,
+        Integer studyYear,
         UUID teacherId,
         String employeeNumber,
         Instant createdAt,
@@ -24,6 +25,7 @@ public record UserResponse(
             AppUser user,
             UUID studentId,
             String studentNumber,
+            Integer studyYear,
             UUID teacherId,
             String employeeNumber
     ) {
@@ -39,6 +41,7 @@ public record UserResponse(
                         .toList(),
                 studentId,
                 studentNumber,
+                studyYear,
                 teacherId,
                 employeeNumber,
                 user.getCreatedAt(),

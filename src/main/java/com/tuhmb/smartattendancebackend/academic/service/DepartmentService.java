@@ -109,6 +109,7 @@ public class DepartmentService {
     public PageResponse<DepartmentStudentResponse> listStudents(
             UUID departmentId,
             String query,
+            Integer studyYear,
             int page,
             int size
     ) {
@@ -116,6 +117,7 @@ public class DepartmentService {
         String pattern = searchPattern(query);
         Page<Student> result = studentRepository.searchDepartmentStudents(
                 departmentId,
+                studyYear,
                 pattern,
                 PageRequest.of(page, size, Sort.by("studentNumber"))
         );

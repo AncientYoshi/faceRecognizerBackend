@@ -13,6 +13,7 @@ public record EnrollmentResponse(
         UUID studentId,
         UUID studentUserId,
         String studentNumber,
+        Integer studyYear,
         String studentName,
         Instant enrolledAt
 ) {
@@ -25,6 +26,7 @@ public record EnrollmentResponse(
                 enrollment.getStudent().getId(),
                 enrollment.getStudent().getUser().getId(),
                 enrollment.getStudent().getStudentNumber(),
+                enrollment.getStudent().getStudyYear(),
                 enrollment.getStudent().getUser().getFirstName()
                         + " "
                         + enrollment.getStudent().getUser().getLastName(),

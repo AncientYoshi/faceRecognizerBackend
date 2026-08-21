@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Set;
+import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -107,7 +108,8 @@ class AcademicManagementIntegrationTest {
                   "firstName": "Alice",
                   "lastName": "Student",
                   "roles": ["STUDENT"],
-                  "studentNumber": "STU-001"
+                  "studentNumber": "STU-001",
+                  "studyYear": 5
                 }
                 """);
         String studentId = JsonPath.read(studentUser.getResponse().getContentAsString(), "$.studentId");
@@ -150,16 +152,24 @@ class AcademicManagementIntegrationTest {
 
         mockMvc.perform(get("/departments/{departmentId}/students", departmentId)
                         .queryParam("query", "STU-001")
+                        .queryParam("studyYear", "5")
                         .header("Authorization", bearer(adminToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].studentId").value(studentId))
                 .andExpect(jsonPath("$.content[0].studentNumber").value("STU-001"))
+                .andExpect(jsonPath("$.content[0].studyYear").value(5))
                 .andExpect(jsonPath("$.content[0].email").value("student@example.com"))
                 .andExpect(jsonPath("$.content[0].fullName").value("Alice Student"))
                 .andExpect(jsonPath("$.content[0].departmentId").value(departmentId))
                 .andExpect(jsonPath("$.content[0].departmentName")
                         .value("Computer Science and Engineering"));
+
+        mockMvc.perform(get("/departments/{departmentId}/students", departmentId)
+                        .queryParam("studyYear", "4")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
 
         MvcResult course = mockMvc.perform(post("/courses")
                         .header("Authorization", bearer(adminToken))
@@ -170,6 +180,7 @@ class AcademicManagementIntegrationTest {
                                   "name": "Introduction to Computing",
                                   "semester": "FIRST",
                                   "academicYear": "2026-2027",
+                                  "studyYear": 5,
                                   "departmentId": "%s",
                                   "teacherId": "%s"
                                 }
@@ -192,6 +203,24 @@ class AcademicManagementIntegrationTest {
                         .content("{\"studentId\":\"" + studentId + "\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("data_conflict"));
+
+        mockMvc.perform(put("/courses/{courseId}", courseId)
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "CSE-101",
+                                  "name": "Introduction to Computing",
+                                  "semester": "FIRST",
+                                  "academicYear": "2026-2027",
+                                  "studyYear": 4,
+                                  "departmentId": "%s",
+                                  "teacherId": "%s"
+                                }
+                                """.formatted(departmentId, teacherId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message")
+                        .value("Course study year must match every enrolled student"));
 
         MvcResult timetable = mockMvc.perform(post("/timetables")
                         .header("Authorization", bearer(adminToken))
@@ -253,21 +282,51 @@ class AcademicManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].studentId").value(studentId));
 
+        String sessionRequestId = UUID.randomUUID().toString();
+        String sessionBody = """
+                {
+                  "courseId": "%s",
+                  "sessionDate": "2026-08-01",
+                  "startTime": "2026-08-01T01:30:00Z",
+                  "endTime": "2026-08-01T03:00:00Z",
+                  "rollCallCount": 3
+                }
+                """.formatted(courseId);
         MvcResult session = mockMvc.perform(post("/attendance-sessions")
+                        .header("Authorization", bearer(teacherToken))
+                        .header("Idempotency-Key", sessionRequestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(sessionBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.rollCallCount").value(3))
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andReturn();
+        String sessionId = JsonPath.read(session.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(post("/attendance-sessions")
+                        .header("Authorization", bearer(teacherToken))
+                        .header("Idempotency-Key", sessionRequestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(sessionBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(sessionId));
+
+        mockMvc.perform(post("/attendance-sessions")
                         .header("Authorization", bearer(teacherToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "courseId": "%s",
                                   "sessionDate": "2026-08-01",
-                                  "startTime": "2026-08-01T01:30:00Z",
-                                  "endTime": "2026-08-01T03:00:00Z"
+                                  "startTime": "2026-08-01T04:00:00Z",
+                                  "endTime": "2026-08-01T07:00:00Z",
+                                  "rollCallCount": 4
                                 }
                                 """.formatted(courseId)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("SCHEDULED"))
-                .andReturn();
-        String sessionId = JsonPath.read(session.getResponse().getContentAsString(), "$.id");
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(
+                        "A department study-year cohort cannot have more than 6 roll calls per day"
+                ));
 
         mockMvc.perform(post("/attendance-sessions/{id}/start", sessionId)
                         .header("Authorization", bearer(teacherToken)))
@@ -291,7 +350,8 @@ class AcademicManagementIntegrationTest {
                                   "courseId": "%s",
                                   "sessionDate": "2026-08-02",
                                   "startTime": "2026-08-02T01:30:00Z",
-                                  "endTime": "2026-08-02T03:00:00Z"
+                                  "endTime": "2026-08-02T03:00:00Z",
+                                  "rollCallCount": 3
                                 }
                                 """.formatted(courseId)))
                 .andExpect(status().isForbidden());

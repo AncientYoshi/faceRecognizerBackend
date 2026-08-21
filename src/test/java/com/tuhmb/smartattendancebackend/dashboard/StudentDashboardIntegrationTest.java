@@ -40,6 +40,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -122,6 +123,51 @@ class StudentDashboardIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void overallPercentageIsTheAverageOfAllSevenAssignedCourses() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> {
+            Student student = studentRepository.findByStudentNumberIgnoreCase("DASH-S-001").orElseThrow();
+            Course existingCourse = courseRepository.findByCodeIgnoreCase("DASH-101").orElseThrow();
+            Teacher teacher = existingCourse.getTeacher();
+            Department department = existingCourse.getDepartment();
+            Instant now = Instant.now();
+            for (int number = 2; number <= 7; number++) {
+                Course course = courseRepository.save(new Course(
+                        "DASH-10" + number,
+                        "Dashboard Course " + number,
+                        "FIRST",
+                        "2026-2027",
+                        5,
+                        department,
+                        teacher
+                ));
+                enrollmentRepository.save(new Enrollment(student, course));
+                LocalDate date = today.minusDays(number);
+                AttendanceSession session = closedSession(
+                        course,
+                        teacher,
+                        date,
+                        now.minusSeconds(number * 10_000L),
+                        now.minusSeconds(number * 10_000L - 3_600L)
+                );
+                attendanceRepository.save(new Attendance(
+                        student,
+                        course,
+                        session,
+                        new BigDecimal("0.96000"),
+                        session.getEndTime().minusSeconds(60)
+                ));
+            }
+        });
+
+        String studentToken = login("dashboard.student@example.com", "student-password");
+        mockMvc.perform(get("/dashboard/student")
+                        .param("date", today.toString())
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overallAttendancePercentage").value(95.24));
+    }
+
     private void createDashboardData() {
         Role teacherRole = roleRepository.findByName(RoleName.TEACHER).orElseThrow();
         Role studentRole = roleRepository.findByName(RoleName.STUDENT).orElseThrow();
@@ -145,7 +191,7 @@ class StudentDashboardIntegrationTest {
         Teacher teacher = new Teacher(teacherUser, "DASH-T-001");
         teacher.assignDepartment(department);
         teacherRepository.save(teacher);
-        Student student = new Student(studentUser, "DASH-S-001");
+        Student student = new Student(studentUser, "DASH-S-001", 5);
         student.assignDepartment(department);
         studentRepository.save(student);
         Course course = courseRepository.save(new Course(
@@ -153,6 +199,7 @@ class StudentDashboardIntegrationTest {
                 "Dashboard Calculations",
                 "FIRST",
                 "2026-2027",
+                5,
                 department,
                 teacher
         ));

@@ -20,14 +20,40 @@ public interface AttendanceRepository
 
     Optional<Attendance> findBySessionIdAndStudentId(UUID sessionId, UUID studentId);
 
+    List<Attendance> findBySessionIdInAndStudentIdIn(List<UUID> sessionIds, List<UUID> studentIds);
+
     long countByVerifiedAtGreaterThanEqualAndVerifiedAtLessThan(Instant from, Instant to);
 
     long countByCourseTeacherId(UUID teacherId);
 
     long countByCourseDepartmentId(UUID departmentId);
 
+    @Query("select coalesce(sum(attendance.session.rollCallCount), 0) from Attendance attendance")
+    long sumRecordedRollCalls();
+
     @Query("""
-            select count(distinct attendance.session.id)
+            select coalesce(sum(attendance.session.rollCallCount), 0)
+            from Attendance attendance
+            where attendance.verifiedAt >= :from and attendance.verifiedAt < :to
+            """)
+    long sumRecordedRollCallsBetween(@Param("from") Instant from, @Param("to") Instant to);
+
+    @Query("""
+            select coalesce(sum(attendance.session.rollCallCount), 0)
+            from Attendance attendance
+            where attendance.course.teacher.id = :teacherId
+            """)
+    long sumRecordedRollCallsByTeacherId(@Param("teacherId") UUID teacherId);
+
+    @Query("""
+            select coalesce(sum(attendance.session.rollCallCount), 0)
+            from Attendance attendance
+            where attendance.course.department.id = :departmentId
+            """)
+    long sumRecordedRollCallsByDepartmentId(@Param("departmentId") UUID departmentId);
+
+    @Query("""
+            select coalesce(sum(attendance.session.rollCallCount), 0)
             from Attendance attendance
             where attendance.student.id = :studentId
               and attendance.status = :presentStatus
@@ -49,7 +75,7 @@ public interface AttendanceRepository
     );
 
     @Query("""
-            select count(distinct attendance.session.id)
+            select coalesce(sum(attendance.session.rollCallCount), 0)
             from Attendance attendance
             where attendance.student.id = :studentId
               and attendance.status = :presentStatus
@@ -82,7 +108,7 @@ public interface AttendanceRepository
     @Query("""
             select attendance.student.id as studentId,
                    attendance.course.id as courseId,
-                   count(distinct attendance.session.id) as presentSessions
+                   sum(attendance.session.rollCallCount) as presentSessions
             from Attendance attendance
             where attendance.session.id in :sessionIds
               and attendance.student.id in :studentIds

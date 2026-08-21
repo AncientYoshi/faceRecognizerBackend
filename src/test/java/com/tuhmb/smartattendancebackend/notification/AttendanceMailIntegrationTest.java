@@ -140,7 +140,7 @@ class AttendanceMailIntegrationTest {
         Teacher teacher = new Teacher(teacherUser, "MAIL-T-001");
         teacher.assignDepartment(department);
         teacherRepository.save(teacher);
-        Student student = new Student(studentUser, "MAIL-S-001");
+        Student student = new Student(studentUser, "MAIL-S-001", 5);
         student.assignDepartment(department);
         studentRepository.save(student);
         Course course = courseRepository.save(new Course(
@@ -148,6 +148,7 @@ class AttendanceMailIntegrationTest {
                 "Mail Course",
                 "FIRST",
                 "2026-2027",
+                5,
                 department,
                 teacher
         ));

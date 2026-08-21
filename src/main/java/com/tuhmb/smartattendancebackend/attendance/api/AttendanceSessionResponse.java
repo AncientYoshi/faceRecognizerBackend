@@ -17,6 +17,7 @@ public record AttendanceSessionResponse(
         LocalDate sessionDate,
         Instant startTime,
         Instant endTime,
+        int rollCallCount,
         String status,
         Instant createdAt,
         Instant updatedAt
@@ -35,6 +36,7 @@ public record AttendanceSessionResponse(
                 session.getSessionDate(),
                 session.getStartTime(),
                 session.getEndTime(),
+                session.getRollCallCount(),
                 session.getStatus().name(),
                 session.getCreatedAt(),
                 session.getUpdatedAt()

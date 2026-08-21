@@ -22,6 +22,9 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
 
     Page<Enrollment> findByStudentId(UUID studentId, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"course"})
+    List<Enrollment> findAllByStudentIdOrderByCourseCode(UUID studentId);
+
     @EntityGraph(attributePaths = {"student.user"})
     @Query("""
             select enrollment
@@ -35,6 +38,20 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     long countByCourseId(UUID courseId);
 
     long countByStudentId(UUID studentId);
+
+    @Query("""
+            select count(enrollment)
+            from Enrollment enrollment
+            where enrollment.course.id = :courseId
+              and (
+                    enrollment.student.studyYear is null
+                    or enrollment.student.studyYear <> :studyYear
+                  )
+            """)
+    long countStudentsOutsideStudyYear(
+            @Param("courseId") UUID courseId,
+            @Param("studyYear") Integer studyYear
+    );
 
     @Query("""
             select count(enrollment)
@@ -55,6 +72,7 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
             from Enrollment enrollment
             where (:courseId is null or enrollment.course.id = :courseId)
               and (:teacherUserId is null or enrollment.course.teacher.user.id = :teacherUserId)
+              and (:studyYear is null or enrollment.student.studyYear = :studyYear)
               and (
                     :query = ''
                     or lower(enrollment.student.studentNumber) like :query
@@ -66,6 +84,7 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     Page<Enrollment> searchForStudentAttendanceReport(
             @Param("courseId") UUID courseId,
             @Param("teacherUserId") UUID teacherUserId,
+            @Param("studyYear") Integer studyYear,
             @Param("query") String query,
             Pageable pageable
     );

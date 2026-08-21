@@ -28,6 +28,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -71,6 +73,7 @@ public class StudentAttendancePercentageService {
             AttendanceReportPeriod period,
             LocalDate referenceDate,
             UUID courseId,
+            Integer studyYear,
             String query,
             int page,
             int size,
@@ -84,6 +87,7 @@ public class StudentAttendancePercentageService {
         Page<Enrollment> enrollments = findEnrollments(
                 courseId,
                 teacherUserId,
+                studyYear,
                 query,
                 PageRequest.of(page, size, reportSort())
         );
@@ -105,10 +109,13 @@ public class StudentAttendancePercentageService {
             AttendanceReportPeriod period,
             LocalDate referenceDate,
             UUID courseId,
+            Integer studyYear,
             String query,
             Jwt jwt
     ) {
-        StudentAttendancePercentageReportData report = completeReport(period, referenceDate, courseId, query, jwt);
+        StudentAttendancePercentageReportData report = completeReport(
+                period, referenceDate, courseId, studyYear, query, jwt
+        );
         auditService.record(
                 AuditAction.REPORT_DOWNLOADED,
                 "StudentAttendancePercentageReport",
@@ -127,10 +134,13 @@ public class StudentAttendancePercentageService {
             AttendanceReportPeriod period,
             LocalDate referenceDate,
             UUID courseId,
+            Integer studyYear,
             String query,
             Jwt jwt
     ) {
-        StudentAttendancePercentageReportData report = completeReport(period, referenceDate, courseId, query, jwt);
+        StudentAttendancePercentageReportData report = completeReport(
+                period, referenceDate, courseId, studyYear, query, jwt
+        );
         auditService.record(
                 AuditAction.REPORT_DOWNLOADED,
                 "StudentAttendancePercentageReport",
@@ -148,6 +158,7 @@ public class StudentAttendancePercentageService {
             AttendanceReportPeriod period,
             LocalDate referenceDate,
             UUID courseId,
+            Integer studyYear,
             String query,
             Jwt jwt
     ) {
@@ -158,6 +169,7 @@ public class StudentAttendancePercentageService {
         Page<Enrollment> enrollments = findEnrollments(
                 courseId,
                 teacherUserId,
+                studyYear,
                 query,
                 PageRequest.of(0, MAX_EXPORT_ROWS, reportSort())
         );
@@ -173,20 +185,110 @@ public class StudentAttendancePercentageService {
                 to,
                 Instant.now(),
                 courseId,
+                studyYear,
                 query == null ? "" : query.trim(),
-                rows(enrollments.getContent(), from, to)
+                rows(enrollments.getContent(), from, to),
+                registers(enrollments.getContent(), from, to)
         );
+    }
+
+    private List<CourseRollCallRegister> registers(
+            List<Enrollment> enrollments,
+            LocalDate from,
+            LocalDate to
+    ) {
+        if (enrollments.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, List<Enrollment>> byCourse = enrollments.stream().collect(Collectors.groupingBy(
+                enrollment -> enrollment.getCourse().getId(),
+                LinkedHashMap::new,
+                Collectors.toList()
+        ));
+        List<AttendanceSession> sessions = sessionRepository.findEligibleReportSessions(
+                List.copyOf(byCourse.keySet()),
+                from,
+                to,
+                AttendanceSessionStatus.CANCELLED,
+                Instant.now()
+        ).stream().sorted(java.util.Comparator.comparing(AttendanceSession::getStartTime)).toList();
+        Map<UUID, List<AttendanceSession>> sessionsByCourse = sessions.stream().collect(Collectors.groupingBy(
+                session -> session.getCourse().getId(),
+                LinkedHashMap::new,
+                Collectors.toList()
+        ));
+        List<UUID> sessionIds = sessions.stream().map(AttendanceSession::getId).toList();
+        List<UUID> studentIds = enrollments.stream()
+                .map(enrollment -> enrollment.getStudent().getId())
+                .distinct()
+                .toList();
+        Set<SessionStudentKey> present = new HashSet<>();
+        if (!sessionIds.isEmpty() && !studentIds.isEmpty()) {
+            attendanceRepository.findBySessionIdInAndStudentIdIn(sessionIds, studentIds)
+                    .forEach(attendance -> present.add(new SessionStudentKey(
+                            attendance.getSession().getId(), attendance.getStudent().getId()
+                    )));
+        }
+
+        return byCourse.values().stream().map(courseEnrollments -> {
+            var course = courseEnrollments.getFirst().getCourse();
+            List<AttendanceSession> courseSessions = sessionsByCourse.getOrDefault(course.getId(), List.of());
+            List<CourseRollCallRegister.RollCallColumn> columns = courseSessions.stream()
+                    .flatMap(session -> java.util.stream.IntStream.rangeClosed(1, session.getRollCallCount())
+                            .mapToObj(callNumber -> new CourseRollCallRegister.RollCallColumn(
+                                    session.getId(), session.getSessionDate(), session.getStartTime(), callNumber
+                            )))
+                    .toList();
+            long totalRollCalls = columns.size();
+            List<CourseRollCallRegister.StudentRow> students = courseEnrollments.stream()
+                    .map(enrollment -> {
+                        var student = enrollment.getStudent();
+                        List<Boolean> presence = columns.stream()
+                                .map(column -> present.contains(new SessionStudentKey(
+                                        column.sessionId(), student.getId()
+                                )))
+                                .toList();
+                        long presentRollCalls = presence.stream().filter(Boolean::booleanValue).count();
+                        return new CourseRollCallRegister.StudentRow(
+                                student.getId(),
+                                student.getStudentNumber(),
+                                student.getUser().getFirstName() + " " + student.getUser().getLastName(),
+                                student.getStudyYear(),
+                                presence,
+                                totalRollCalls,
+                                presentRollCalls,
+                                totalRollCalls - presentRollCalls,
+                                percentage(presentRollCalls, totalRollCalls)
+                        );
+                    })
+                    .toList();
+            return new CourseRollCallRegister(
+                    course.getId(),
+                    course.getCode(),
+                    course.getName(),
+                    course.getAcademicYear(),
+                    course.getSemester(),
+                    course.getStudyYear(),
+                    course.getDepartment().getId(),
+                    course.getDepartment().getCode(),
+                    course.getDepartment().getName(),
+                    columns,
+                    students
+            );
+        }).toList();
     }
 
     private Page<Enrollment> findEnrollments(
             UUID courseId,
             UUID teacherUserId,
+            Integer studyYear,
             String query,
             PageRequest pageRequest
     ) {
         return enrollmentRepository.searchForStudentAttendanceReport(
                 courseId,
                 teacherUserId,
+                studyYear,
                 normalizeQuery(query),
                 pageRequest
         );
@@ -216,7 +318,11 @@ public class StudentAttendancePercentageService {
                 AttendanceSessionStatus.CANCELLED,
                 Instant.now()
         );
-        sessions.forEach(session -> sessionCounts.merge(session.getCourse().getId(), 1L, Long::sum));
+        sessions.forEach(session -> sessionCounts.merge(
+                session.getCourse().getId(),
+                (long) session.getRollCallCount(),
+                Long::sum
+        ));
 
         if (!sessions.isEmpty()) {
             List<UUID> studentIds = enrollments.stream()
@@ -254,6 +360,7 @@ public class StudentAttendancePercentageService {
                 studentId,
                 enrollment.getStudent().getUser().getId(),
                 enrollment.getStudent().getStudentNumber(),
+                enrollment.getStudent().getStudyYear(),
                 enrollment.getStudent().getUser().getFirstName()
                         + " "
                         + enrollment.getStudent().getUser().getLastName(),
@@ -310,5 +417,8 @@ public class StudentAttendancePercentageService {
     }
 
     private record StudentCourseKey(UUID studentId, UUID courseId) {
+    }
+
+    private record SessionStudentKey(UUID sessionId, UUID studentId) {
     }
 }

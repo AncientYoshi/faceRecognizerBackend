@@ -28,6 +28,7 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
             SELECT student
             FROM Student student
             WHERE student.department.id = :departmentId
+              AND (:studyYear IS NULL OR student.studyYear = :studyYear)
               AND (
                     :query = ''
                     OR LOWER(student.studentNumber) LIKE :query
@@ -38,6 +39,7 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
             """)
     Page<Student> searchDepartmentStudents(
             @Param("departmentId") UUID departmentId,
+            @Param("studyYear") Integer studyYear,
             @Param("query") String query,
             Pageable pageable
     );

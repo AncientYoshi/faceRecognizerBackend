@@ -7,6 +7,7 @@ public record StudentAttendancePercentageResponse(
         UUID studentId,
         UUID studentUserId,
         String studentNumber,
+        Integer studyYear,
         String studentName,
         UUID courseId,
         String courseCode,

@@ -77,10 +77,18 @@ public class AttendanceReportService {
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "verifiedAt"))
         );
         long expected = expectedAttendance(filter, jwt);
+        long recordedRollCalls = result.getContent().stream()
+                .mapToLong(attendance -> attendance.getSession().getRollCallCount())
+                .sum();
+        if (page > 0 || result.getTotalPages() > 1) {
+            recordedRollCalls = attendanceRepository.findAll(specification).stream()
+                    .mapToLong(attendance -> attendance.getSession().getRollCallCount())
+                    .sum();
+        }
         return new AttendanceReportResponse(
-                result.getTotalElements(),
+                recordedRollCalls,
                 expected,
-                rate(result.getTotalElements(), expected),
+                rate(recordedRollCalls, expected),
                 Instant.now(),
                 PageResponse.from(result.map(AttendanceResponse::from))
         );
@@ -127,10 +135,13 @@ public class AttendanceReportService {
             );
         }
         long expected = expectedAttendance(filter, jwt);
+        long recordedRollCalls = attendance.stream()
+                .mapToLong(record -> record.getSession().getRollCallCount())
+                .sum();
         return new AttendanceReportData(
-                attendance.size(),
+                recordedRollCalls,
                 expected,
-                rate(attendance.size(), expected),
+                rate(recordedRollCalls, expected),
                 Instant.now(),
                 filter,
                 attendance.stream().map(AttendanceResponse::from).toList()
@@ -214,10 +225,11 @@ public class AttendanceReportService {
         return sessionRepository.findAll(specification).stream()
                 .mapToLong(session -> filter.studentId() == null
                         ? enrollmentRepository.countByCourseId(session.getCourse().getId())
+                                * session.getRollCallCount()
                         : enrollmentRepository.existsByStudentIdAndCourseId(
                                 filter.studentId(),
                                 session.getCourse().getId()
-                        ) ? 1 : 0)
+                        ) ? session.getRollCallCount() : 0)
                 .sum();
     }
 

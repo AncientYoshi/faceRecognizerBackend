@@ -205,6 +205,7 @@ class AuthFlowIntegrationTest {
                                   "lastName": "Student",
                                   "role": "STUDENT",
                                   "studentNumber": "REG-STU-001",
+                                  "studyYear": 5,
                                   "employeeNumber": null,
                                   "departmentId": "%s"
                                 }
@@ -213,6 +214,7 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.email").value("new.student@example.com"))
                 .andExpect(jsonPath("$.role").value("STUDENT"))
                 .andExpect(jsonPath("$.studentNumber").value("REG-STU-001"))
+                .andExpect(jsonPath("$.studyYear").value(5))
                 .andExpect(jsonPath("$.teacherId").doesNotExist())
                 .andExpect(jsonPath("$.departmentId").value(department.getId().toString()))
                 .andReturn();
@@ -222,6 +224,7 @@ class AuthFlowIntegrationTest {
         mockMvc.perform(get("/students/me").header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.studentId").value(studentId))
+                .andExpect(jsonPath("$.studyYear").value(5))
                 .andExpect(jsonPath("$.departmentId").value(department.getId().toString()))
                 .andExpect(jsonPath("$.departmentCode").value("REG-CSE"));
 
@@ -298,12 +301,14 @@ class AuthFlowIntegrationTest {
                                   "firstName": "Alice",
                                   "lastName": "Student",
                                   "roles": ["STUDENT"],
-                                  "studentNumber": "STU-001"
+                                  "studentNumber": "STU-001",
+                                  "studyYear": 5
                                 }
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.roles[0]").value("STUDENT"))
                 .andExpect(jsonPath("$.studentNumber").value("STU-001"))
+                .andExpect(jsonPath("$.studyYear").value(5))
                 .andReturn();
         String userId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
         String studentId = JsonPath.read(created.getResponse().getContentAsString(), "$.studentId");
@@ -323,6 +328,7 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.studentId").value(studentId))
                 .andExpect(jsonPath("$.userId").value(userId))
                 .andExpect(jsonPath("$.studentNumber").value("STU-001"))
+                .andExpect(jsonPath("$.studyYear").value(5))
                 .andExpect(jsonPath("$.email").value("student@example.com"))
                 .andExpect(jsonPath("$.firstName").value("Alice"))
                 .andExpect(jsonPath("$.lastName").value("Student"))

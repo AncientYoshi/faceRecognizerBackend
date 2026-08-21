@@ -34,4 +34,15 @@ public record AttendanceVerificationResponse(
                 "Attendance recorded successfully"
         );
     }
+
+    public static AttendanceVerificationResponse alreadyRecorded(Attendance attendance) {
+        return new AttendanceVerificationResponse(
+                true,
+                attendance.getSimilarityScore().doubleValue(),
+                attendance.getId(),
+                attendance.getStatus().name(),
+                attendance.getVerifiedAt(),
+                "Attendance was already recorded"
+        );
+    }
 }

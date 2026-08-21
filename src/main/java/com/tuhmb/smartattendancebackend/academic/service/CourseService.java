@@ -61,6 +61,7 @@ public class CourseService {
             UUID teacherId,
             String semester,
             String academicYear,
+            Integer studyYear,
             int page,
             int size
     ) {
@@ -85,6 +86,9 @@ public class CourseService {
             }
             if (academicYear != null && !academicYear.isBlank()) {
                 predicates.add(builder.equal(root.get("academicYear"), academicYear.trim()));
+            }
+            if (studyYear != null) {
+                predicates.add(builder.equal(root.get("studyYear"), studyYear));
             }
             return builder.and(predicates.toArray(Predicate[]::new));
         };
@@ -112,6 +116,7 @@ public class CourseService {
                 request.name().trim(),
                 request.semester().trim(),
                 request.academicYear().trim(),
+                request.studyYear(),
                 department,
                 teacher
         ));
@@ -126,11 +131,15 @@ public class CourseService {
         Department department = findDepartment(request.departmentId());
         Teacher teacher = findTeacher(request.teacherId());
         requireTeacherDepartment(teacher, department);
+        if (enrollmentRepository.countStudentsOutsideStudyYear(id, request.studyYear()) > 0) {
+            throw new ConflictException("Course study year must match every enrolled student");
+        }
         course.update(
                 code,
                 request.name().trim(),
                 request.semester().trim(),
                 request.academicYear().trim(),
+                request.studyYear(),
                 department,
                 teacher
         );

@@ -46,10 +46,13 @@ public class CourseController {
             @RequestParam(required = false) UUID teacherId,
             @RequestParam(required = false) String semester,
             @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) @Min(1) @Max(6) Integer studyYear,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return courseService.search(query, departmentId, teacherId, semester, academicYear, page, size);
+        return courseService.search(
+                query, departmentId, teacherId, semester, academicYear, studyYear, page, size
+        );
     }
 
     @GetMapping("/{id}")

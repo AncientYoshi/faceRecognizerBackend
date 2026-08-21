@@ -36,6 +36,8 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -82,7 +84,7 @@ public class DashboardService {
         List<AttendanceSession> eligibleSessions = sessionRepository
                 .findByStatusNotAndStartTimeLessThanEqual(AttendanceSessionStatus.CANCELLED, now);
         long expected = expectedAttendance(eligibleSessions);
-        long recorded = attendanceRepository.count();
+        long recorded = attendanceRepository.sumRecordedRollCalls();
 
         List<DepartmentDashboardStatistic> departmentStatistics = departmentRepository
                 .findAll(Sort.by("code"))
@@ -93,7 +95,7 @@ public class DashboardService {
         return new AdminDashboardResponse(
                 studentRepository.count(),
                 teacherRepository.count(),
-                attendanceRepository.countByVerifiedAtGreaterThanEqualAndVerifiedAtLessThan(dayStart, dayEnd),
+                attendanceRepository.sumRecordedRollCallsBetween(dayStart, dayEnd),
                 expected,
                 rate(recorded, expected),
                 sessionRepository.findTop5ByOrderByStartTimeDesc().stream()
@@ -124,7 +126,7 @@ public class DashboardService {
                         Instant.now()
                 );
         long expected = expectedAttendance(eligibleSessions);
-        long recorded = attendanceRepository.countByCourseTeacherId(teacher.getId());
+        long recorded = attendanceRepository.sumRecordedRollCallsByTeacherId(teacher.getId());
         String teacherName = teacher.getUser().getFirstName() + " " + teacher.getUser().getLastName();
 
         return new TeacherDashboardResponse(
@@ -178,14 +180,14 @@ public class DashboardService {
                 asOf
         );
 
-        BigDecimal overallPercentage = percentage(overall.present(), overall.eligible());
-        BigDecimal currentMonthPercentage = percentage(
-                currentMonthTotals.present(),
-                currentMonthTotals.eligible()
+        BigDecimal overallPercentage = averageCoursePercentage(
+                student.getId(), LocalDate.of(1970, 1, 1), effectiveDate, asOf
         );
-        BigDecimal previousMonthPercentage = percentage(
-                previousMonthTotals.present(),
-                previousMonthTotals.eligible()
+        BigDecimal currentMonthPercentage = averageCoursePercentage(
+                student.getId(), currentMonth.atDay(1), currentMonth.atEndOfMonth(), asOf
+        );
+        BigDecimal previousMonthPercentage = averageCoursePercentage(
+                student.getId(), previousMonth.atDay(1), previousMonth.atEndOfMonth(), asOf
         );
         String currentSemester = settingValue("CURRENT_SEMESTER");
         String currentAcademicYear = settingValue("CURRENT_ACADEMIC_YEAR");
@@ -221,13 +223,14 @@ public class DashboardService {
                 studentRepository.countByDepartmentId(department.getId()),
                 teacherRepository.countByDepartmentId(department.getId()),
                 courseRepository.countByDepartmentId(department.getId()),
-                attendanceRepository.countByCourseDepartmentId(department.getId())
+                attendanceRepository.sumRecordedRollCallsByDepartmentId(department.getId())
         );
     }
 
     private long expectedAttendance(List<AttendanceSession> sessions) {
         return sessions.stream()
-                .mapToLong(session -> enrollmentRepository.countByCourseId(session.getCourse().getId()))
+                .mapToLong(session -> enrollmentRepository.countByCourseId(session.getCourse().getId())
+                        * session.getRollCallCount())
                 .sum();
     }
 
@@ -284,6 +287,58 @@ public class DashboardService {
         return BigDecimal.valueOf(present)
                 .multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(eligible), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal averageCoursePercentage(
+            UUID studentId,
+            LocalDate from,
+            LocalDate to,
+            Instant asOf
+    ) {
+        List<com.tuhmb.smartattendancebackend.academic.domain.Enrollment> enrollments =
+                enrollmentRepository.findAllByStudentIdOrderByCourseCode(studentId);
+        if (enrollments.isEmpty()) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        List<UUID> courseIds = enrollments.stream()
+                .map(enrollment -> enrollment.getCourse().getId())
+                .toList();
+        List<AttendanceSession> sessions = sessionRepository.findEligibleReportSessions(
+                        courseIds,
+                        from,
+                        to,
+                        AttendanceSessionStatus.CANCELLED,
+                        asOf
+                ).stream()
+                .filter(session -> session.getStatus() == AttendanceSessionStatus.CLOSED
+                        || !session.getEndTime().isAfter(asOf))
+                .toList();
+        Map<UUID, Long> eligibleByCourse = new HashMap<>();
+        sessions.forEach(session -> eligibleByCourse.merge(
+                session.getCourse().getId(),
+                (long) session.getRollCallCount(),
+                Long::sum
+        ));
+        Map<UUID, Long> presentByCourse = new HashMap<>();
+        if (!sessions.isEmpty()) {
+            attendanceRepository.countPresentSessionsByStudentAndCourse(
+                    sessions.stream().map(AttendanceSession::getId).toList(),
+                    List.of(studentId)
+            ).forEach(count -> presentByCourse.put(count.getCourseId(), count.getPresentSessions()));
+        }
+        BigDecimal sum = enrollments.stream()
+                .map(enrollment -> {
+                    UUID courseId = enrollment.getCourse().getId();
+                    long eligible = eligibleByCourse.getOrDefault(courseId, 0L);
+                    long present = Math.min(presentByCourse.getOrDefault(courseId, 0L), eligible);
+                    return percentage(present, eligible);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(
+                BigDecimal.valueOf(enrollments.size()),
+                2,
+                RoundingMode.HALF_UP
+        );
     }
 
     private String settingValue(String key) {

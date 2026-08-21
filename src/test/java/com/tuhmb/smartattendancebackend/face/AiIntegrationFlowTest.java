@@ -132,7 +132,7 @@ class AiIntegrationFlowTest {
             Department department = departmentRepository.save(
                     new Department("CSE", "Computer Science", null)
             );
-            Student student = new Student(studentUser, "STU-AI-001");
+            Student student = new Student(studentUser, "STU-AI-001", 5);
             student.assignDepartment(department);
             studentRepository.save(student);
             Teacher teacher = new Teacher(teacherUser, "TCH-AI-001");
@@ -143,6 +143,7 @@ class AiIntegrationFlowTest {
                     "AI Attendance",
                     "FIRST",
                     "2026-2027",
+                    5,
                     department,
                     teacher
             ));
@@ -222,8 +223,9 @@ class AiIntegrationFlowTest {
                         .file(faceImage())
                         .param("sessionId", firstSessionId.toString())
                         .header("Authorization", bearer(studentToken)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("data_conflict"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attendanceId").value(attendanceId))
+                .andExpect(jsonPath("$.message").value("Attendance was already recorded"));
         assertEquals(1, faceAiClient.verifyCalls.get());
 
         faceAiClient.verificationResponse = new VerifyFaceAiResponse(false, 0.41234);

@@ -45,12 +45,13 @@ public class AttendanceReportController {
             @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) @Min(1) @Max(6) Integer studyYear,
             @RequestParam(required = false) String query,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return percentageService.report(period, date, courseId, query, page, size, jwt);
+        return percentageService.report(period, date, courseId, studyYear, query, page, size, jwt);
     }
 
     @GetMapping("/students/export/pdf")
@@ -58,10 +59,11 @@ public class AttendanceReportController {
             @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) @Min(1) @Max(6) Integer studyYear,
             @RequestParam(required = false) String query,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return download(percentageService.exportPdf(period, date, courseId, query, jwt));
+        return download(percentageService.exportPdf(period, date, courseId, studyYear, query, jwt));
     }
 
     @GetMapping("/students/export/excel")
@@ -69,10 +71,11 @@ public class AttendanceReportController {
             @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) UUID courseId,
+            @RequestParam(required = false) @Min(1) @Max(6) Integer studyYear,
             @RequestParam(required = false) String query,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return download(percentageService.exportExcel(period, date, courseId, query, jwt));
+        return download(percentageService.exportExcel(period, date, courseId, studyYear, query, jwt));
     }
 
     @GetMapping

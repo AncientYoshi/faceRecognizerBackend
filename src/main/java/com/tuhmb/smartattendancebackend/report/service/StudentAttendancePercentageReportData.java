@@ -15,7 +15,9 @@ public record StudentAttendancePercentageReportData(
         LocalDate to,
         Instant generatedAt,
         UUID courseId,
+        Integer studyYear,
         String query,
-        List<StudentAttendancePercentageResponse> students
+        List<StudentAttendancePercentageResponse> students,
+        List<CourseRollCallRegister> registers
 ) {
 }

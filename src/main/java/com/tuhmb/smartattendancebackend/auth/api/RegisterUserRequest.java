@@ -4,6 +4,8 @@ import com.tuhmb.smartattendancebackend.user.domain.RoleName;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 import java.util.UUID;
@@ -15,6 +17,7 @@ public record RegisterUserRequest(
         @NotBlank @Size(max = 100) String lastName,
         @NotNull RoleName role,
         @Size(max = 80) String studentNumber,
+        @Min(1) @Max(6) Integer studyYear,
         @Size(max = 80) String employeeNumber,
         @NotNull UUID departmentId
 ) {

@@ -56,7 +56,7 @@ public class RegistrationService {
     @Transactional
     public RegisterUserResponse register(RegisterUserRequest request) {
         RoleName roleName = requireSelfRegistrationRole(request.role());
-        validateProfileNumbers(roleName, request.studentNumber(), request.employeeNumber());
+        validateProfileFields(roleName, request.studentNumber(), request.studyYear(), request.employeeNumber());
         String email = request.email().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ConflictException("Email is already in use");
@@ -81,7 +81,7 @@ public class RegistrationService {
             if (studentRepository.existsByStudentNumberIgnoreCase(studentNumber)) {
                 throw new ConflictException("Student number is already in use");
             }
-            student = new Student(user, studentNumber);
+            student = new Student(user, studentNumber, request.studyYear());
             student.assignDepartment(department);
             studentRepository.save(student);
         } else {
@@ -109,6 +109,7 @@ public class RegistrationService {
                 roleName,
                 student == null ? null : student.getId(),
                 student == null ? null : student.getStudentNumber(),
+                student == null ? null : student.getStudyYear(),
                 teacher == null ? null : teacher.getId(),
                 teacher == null ? null : teacher.getEmployeeNumber(),
                 department.getId(),
@@ -125,10 +126,18 @@ public class RegistrationService {
         return role;
     }
 
-    private void validateProfileNumbers(RoleName role, String studentNumber, String employeeNumber) {
+    private void validateProfileFields(
+            RoleName role,
+            String studentNumber,
+            Integer studyYear,
+            String employeeNumber
+    ) {
         if (role == RoleName.STUDENT) {
             if (isBlank(studentNumber)) {
                 throw new IllegalArgumentException("studentNumber is required for the STUDENT role");
+            }
+            if (studyYear == null) {
+                throw new IllegalArgumentException("studyYear is required for the STUDENT role");
             }
             if (!isBlank(employeeNumber)) {
                 throw new IllegalArgumentException("employeeNumber is not allowed for the STUDENT role");
@@ -139,6 +148,9 @@ public class RegistrationService {
             }
             if (!isBlank(studentNumber)) {
                 throw new IllegalArgumentException("studentNumber is not allowed for the TEACHER role");
+            }
+            if (studyYear != null) {
+                throw new IllegalArgumentException("studyYear is not allowed for the TEACHER role");
             }
         }
     }

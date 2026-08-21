@@ -25,6 +25,9 @@ public class Course extends BaseEntity {
     @Column(name = "academic_year", nullable = false, length = 20)
     private String academicYear;
 
+    @Column(name = "study_year")
+    private Integer studyYear;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
@@ -44,7 +47,19 @@ public class Course extends BaseEntity {
             Department department,
             Teacher teacher
     ) {
-        update(code, name, semester, academicYear, department, teacher);
+        this(code, name, semester, academicYear, null, department, teacher);
+    }
+
+    public Course(
+            String code,
+            String name,
+            String semester,
+            String academicYear,
+            Integer studyYear,
+            Department department,
+            Teacher teacher
+    ) {
+        update(code, name, semester, academicYear, studyYear, department, teacher);
     }
 
     public void update(
@@ -52,6 +67,7 @@ public class Course extends BaseEntity {
             String name,
             String semester,
             String academicYear,
+            Integer studyYear,
             Department department,
             Teacher teacher
     ) {
@@ -59,6 +75,7 @@ public class Course extends BaseEntity {
         this.name = name;
         this.semester = semester;
         this.academicYear = academicYear;
+        this.studyYear = studyYear;
         this.department = department;
         this.teacher = teacher;
     }
@@ -77,6 +94,10 @@ public class Course extends BaseEntity {
 
     public String getAcademicYear() {
         return academicYear;
+    }
+
+    public Integer getStudyYear() {
+        return studyYear;
     }
 
     public Department getDepartment() {

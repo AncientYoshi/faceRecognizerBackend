@@ -64,10 +64,11 @@ public class DepartmentController {
     public PageResponse<DepartmentStudentResponse> listStudents(
             @PathVariable UUID departmentId,
             @RequestParam(defaultValue = "") String query,
+            @RequestParam(required = false) @Min(1) @Max(6) Integer studyYear,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return departmentService.listStudents(departmentId, query, page, size);
+        return departmentService.listStudents(departmentId, query, studyYear, page, size);
     }
 
     @PostMapping

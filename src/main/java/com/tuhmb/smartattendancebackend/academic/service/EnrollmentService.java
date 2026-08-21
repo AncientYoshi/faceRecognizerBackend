@@ -46,6 +46,15 @@ public class EnrollmentService {
                 || !student.getDepartment().getId().equals(course.getDepartment().getId())) {
             throw new ConflictException("Student must belong to the course department");
         }
+        if (student.getStudyYear() == null) {
+            throw new ConflictException("Student study year must be assigned before enrollment");
+        }
+        if (course.getStudyYear() == null) {
+            throw new ConflictException("Course study year must be assigned before enrollment");
+        }
+        if (!student.getStudyYear().equals(course.getStudyYear())) {
+            throw new ConflictException("Student and course must have the same study year");
+        }
         if (enrollmentRepository.existsByStudentIdAndCourseId(studentId, courseId)) {
             throw new ConflictException("Student is already enrolled in this course");
         }

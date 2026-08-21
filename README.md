@@ -108,6 +108,7 @@ curl -X POST http://localhost:8080/auth/register \
     "lastName": "Student",
     "role": "STUDENT",
     "studentNumber": "STU-001",
+    "studyYear": 5,
     "employeeNumber": null,
     "departmentId": "DEPARTMENT_UUID"
   }'
@@ -171,11 +172,12 @@ curl -X POST http://localhost:8080/users \
     "firstName": "Alice",
     "lastName": "Student",
     "roles": ["STUDENT"],
-    "studentNumber": "STU-001"
+    "studentNumber": "STU-001",
+    "studyYear": 5
   }'
 ```
 
-`studentNumber` is required when assigning `STUDENT`, and `employeeNumber` is required when assigning `TEACHER`. `STUDENT` and `TEACHER` are mutually exclusive. Removing one of those roles removes its corresponding profile. The system-defined roles are seeded by Flyway and are intentionally not mutable.
+`studentNumber` and `studyYear` (1 through 6) are required when assigning `STUDENT`, and `employeeNumber` is required when assigning `TEACHER`. `studyYear` must be omitted for non-students. `STUDENT` and `TEACHER` are mutually exclusive. Removing one of those roles removes its corresponding profile. The system-defined roles are seeded by Flyway and are intentionally not mutable.
 
 The user response includes `studentId` and `teacherId`. These profile identifiers are used by the academic-management APIs.
 
@@ -193,10 +195,10 @@ Department APIs:
 - `DELETE /departments/{departmentId}/students/{studentId}` — admin
 - `PUT /departments/{departmentId}/teachers/{teacherId}` — admin
 - `DELETE /departments/{departmentId}/teachers/{teacherId}` — admin
-- `GET /departments/{departmentId}/students?query=&page=0&size=20` — admin assignment list
+- `GET /departments/{departmentId}/students?studyYear=5&query=&page=0&size=20` — admin assignment list, optionally filtered by study year
 - `GET /departments/{departmentId}/teachers?query=&page=0&size=20` — admin assignment list
 
-The assignment-list responses include the profile ID, linked user ID, email, first/last/full name, student or employee number, and department ID/code/name. Search matches the reference number, email, first name, or last name.
+The assignment-list responses include the profile ID, linked user ID, email, first/last/full name, student or employee number, student study year, and department ID/code/name. Search matches the reference number, email, first name, or last name.
 
 Course and enrollment APIs:
 
@@ -212,6 +214,27 @@ Course and enrollment APIs:
 - `GET /students/{studentId}/courses` — admin or that student
 
 Student clients should call `GET /students/me` after login and use its `studentId` for student-scoped APIs such as `GET /students/{studentId}/courses`. This endpoint uses the authenticated JWT subject and does not require access to the admin-only `/users/{id}` API.
+
+### Student study-year grouping
+
+Students are grouped by department, `studyYear` (1 through 6), and their official `studentNumber`. For example, a Fifth Year Mechatronics student can be stored as:
+
+```json
+{
+  "studentNumber": "VMC-11",
+  "studyYear": 5,
+  "departmentId": "MECHATRONICS_DEPARTMENT_UUID"
+}
+```
+
+Retrieve the Fifth Year Mechatronics roll-call list with:
+
+```bash
+curl "http://localhost:8080/departments/MECHATRONICS_DEPARTMENT_UUID/students?studyYear=5&page=0&size=100" \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+The Flyway migration keeps `studyYear` nullable for students created before this feature. Assign those existing students a year through `PUT /users/{userId}`; all newly created or self-registered students must provide `studyYear`.
 
 Course search accepts `query`, `departmentId`, `teacherId`, `semester`, `academicYear`, `page`, and `size`.
 
@@ -346,7 +369,7 @@ Dashboard APIs:
 Report APIs:
 
 - `GET /reports/attendance` — admin or teacher
-- `GET /reports/attendance/students` — weekly/monthly percentage list for admin or teacher
+- `GET /reports/attendance/students` — weekly/monthly percentage list for admin or teacher, optionally filtered by `studyYear`
 - `GET /reports/attendance/students/export/pdf` — weekly/monthly student percentage PDF
 - `GET /reports/attendance/students/export/excel` — weekly/monthly student percentage Excel workbook
 - `GET /reports/attendance/export/pdf` — admin or teacher
@@ -367,7 +390,22 @@ curl -OJ "http://localhost:8080/reports/attendance/export/excel?departmentId=DEP
   -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
-The attendance rate is `recorded attendance / expected attendance`. Expected attendance is calculated from eligible sessions and course enrollments, so the dashboard and report denominator remains meaningful when attendance is missing.
+Courses and attendance sessions now carry two fields used by the university roll-call model:
+
+```json
+{
+  "studyYear": 5,
+  "rollCallCount": 3
+}
+```
+
+`studyYear` belongs to the course request and must match the enrolled student's year. `rollCallCount` belongs to the attendance-session request and is between 1 and 6. The total scheduled roll calls for one department and study-year cohort cannot exceed 6 on the same date. For example, a Monday 09:00–12:00 Industrial Automation session uses `rollCallCount: 3`; one successful face verification records all three consecutive calls as present.
+
+Attendance totals are weighted by `rollCallCount`. Four weekly three-call sessions produce 12 monthly calls, and attendance at three of them produces 9 present calls and `9 / 12 = 75%`. The student dashboard's overall percentage is the arithmetic mean of the percentage for every enrolled course, including a zero percentage for a course that has no eligible calls yet. Thus, a student assigned to 7 courses has the sum of the 7 course percentages divided by 7.
+
+The student PDF and Excel exports use the university register layout: one row per student, one narrow column per roll call, followed by absent, present, and percentage totals. PDF output is landscape and Excel creates one print-ready worksheet per course.
+
+The attendance rate is `recorded weighted roll calls / expected weighted roll calls`. Expected attendance is calculated from eligible sessions, their `rollCallCount`, and course enrollments, so the dashboard and report denominator remains meaningful when attendance is missing. Existing legacy courses have a nullable study year; update each one through `PUT /courses/{courseId}` before enrolling students or scheduling new sessions.
 
 The student dashboard is calculated from the complete attendance history and does not depend on a paginated `/attendance` response:
 
@@ -376,12 +414,12 @@ curl "http://localhost:8080/dashboard/student?date=2026-08-16" \
   -H "Authorization: Bearer STUDENT_ACCESS_TOKEN"
 ```
 
-It returns overall, current-month, and previous-month attendance percentages; monthly change; present, absent, and eligible-session totals; the requested day's sessions; the configured attendance threshold; and the student's current-term course count. An eligible session is a non-cancelled enrolled-course session that is closed or whose end time has passed. Because attendance currently supports only `PRESENT`, absence is derived as `eligibleSessions - presentCount`; there is no late value. Current-term courses use `CURRENT_SEMESTER` and `CURRENT_ACADEMIC_YEAR`, and the required percentage uses `ATTENDANCE_THRESHOLD`.
+It returns overall, current-month, and previous-month attendance percentages; monthly change; present, absent, and eligible roll-call totals; the requested day's sessions; the configured attendance threshold; and the student's current-term course count. An eligible roll call belongs to a non-cancelled enrolled-course session that is closed or whose end time has passed. Because attendance currently supports only `PRESENT`, absence is derived as `eligibleSessions - presentCount`; there is no late value. The existing JSON field names retain `Sessions` for API compatibility, but their numeric values are weighted roll-call units. Current-term courses use `CURRENT_SEMESTER` and `CURRENT_ACADEMIC_YEAR`, and the required percentage uses `ATTENDANCE_THRESHOLD`.
 
 Teachers can list every enrolled student and see present, absent, total-session, and percentage values for one of their assigned courses:
 
 ```bash
-curl "http://localhost:8080/reports/attendance/students?period=WEEK&date=2026-08-10&courseId=COURSE_ID&page=0&size=20" \
+curl "http://localhost:8080/reports/attendance/students?period=WEEK&date=2026-08-10&courseId=COURSE_ID&studyYear=5&page=0&size=20" \
   -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
 
 curl "http://localhost:8080/reports/attendance/students?period=MONTH&date=2026-08-10&courseId=COURSE_ID&query=STU-001" \

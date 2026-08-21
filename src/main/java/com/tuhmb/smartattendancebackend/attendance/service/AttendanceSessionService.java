@@ -89,17 +89,32 @@ public class AttendanceSessionService {
     }
 
     @Transactional
-    public AttendanceSessionResponse create(AttendanceSessionRequest request, Jwt jwt) {
+    public AttendanceSessionResponse create(
+            AttendanceSessionRequest request,
+            UUID idempotencyKey,
+            Jwt jwt
+    ) {
         Course course = courseService.findCourse(request.courseId());
         accessService.requireCourseTeacherOrAdmin(course, jwt);
+        if (idempotencyKey != null) {
+            AttendanceSession existing = sessionRepository.findByIdempotencyKey(idempotencyKey).orElse(null);
+            if (existing != null) {
+                accessService.requireCourseTeacherOrAdmin(existing.getCourse(), jwt);
+                requireSameCreateRequest(existing, request);
+                return AttendanceSessionResponse.from(existing);
+            }
+        }
+        validateDailyRollCallLimit(course, request.sessionDate(), request.rollCallCount(), null);
         AttendanceSession session = new AttendanceSession(
                 course,
                 course.getTeacher(),
                 request.sessionDate(),
                 request.startTime(),
-                request.endTime()
+                request.endTime(),
+                request.rollCallCount()
         );
-        return AttendanceSessionResponse.from(sessionRepository.save(session));
+        session.assignIdempotencyKey(idempotencyKey);
+        return AttendanceSessionResponse.from(sessionRepository.saveAndFlush(session));
     }
 
     @Transactional
@@ -109,7 +124,12 @@ public class AttendanceSessionService {
         if (!session.getCourse().getId().equals(request.courseId())) {
             throw new ConflictException("An attendance session cannot be moved to another course");
         }
-        session.updateSchedule(request.sessionDate(), request.startTime(), request.endTime());
+        validateDailyRollCallLimit(
+                session.getCourse(), request.sessionDate(), request.rollCallCount(), session.getId()
+        );
+        session.updateSchedule(
+                request.sessionDate(), request.startTime(), request.endTime(), request.rollCallCount()
+        );
         auditService.record(AuditAction.UPDATE, "AttendanceSession", id, "Attendance session updated");
         return AttendanceSessionResponse.from(session);
     }
@@ -155,5 +175,42 @@ public class AttendanceSessionService {
     private AttendanceSession findSession(UUID id) {
         return sessionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Attendance session was not found"));
+    }
+
+    private void validateDailyRollCallLimit(
+            Course course,
+            LocalDate date,
+            int requestedRollCalls,
+            UUID excludedSessionId
+    ) {
+        if (course.getStudyYear() == null) {
+            throw new ConflictException("Course study year must be assigned before scheduling attendance");
+        }
+        long scheduled = sessionRepository.sumCohortRollCallsForDate(
+                course.getDepartment().getId(),
+                course.getStudyYear(),
+                date,
+                AttendanceSessionStatus.CANCELLED,
+                excludedSessionId
+        );
+        if (scheduled + requestedRollCalls > 6) {
+            throw new ConflictException(
+                    "A department study-year cohort cannot have more than 6 roll calls per day"
+            );
+        }
+    }
+
+    private void requireSameCreateRequest(
+            AttendanceSession existing,
+            AttendanceSessionRequest request
+    ) {
+        boolean sameRequest = existing.getCourse().getId().equals(request.courseId())
+                && existing.getSessionDate().equals(request.sessionDate())
+                && existing.getStartTime().equals(request.startTime())
+                && existing.getEndTime().equals(request.endTime())
+                && existing.getRollCallCount() == request.rollCallCount();
+        if (!sameRequest) {
+            throw new ConflictException("Idempotency-Key was already used for a different request");
+        }
     }
 }

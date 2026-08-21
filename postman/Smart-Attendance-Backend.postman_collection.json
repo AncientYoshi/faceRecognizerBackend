@@ -186,7 +186,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{studentPassword}}\",\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Student\",\n  \"roles\": [\"STUDENT\"],\n  \"studentNumber\": \"STU-PM-001\",\n  \"employeeNumber\": null\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{studentPassword}}\",\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Student\",\n  \"roles\": [\"STUDENT\"],\n  \"studentNumber\": \"VMC-11\",\n  \"studyYear\": 5,\n  \"employeeNumber\": null\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/users"
           }
         },
@@ -258,7 +258,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": null,\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Student Updated\",\n  \"enabled\": true,\n  \"roles\": [\"STUDENT\"],\n  \"studentNumber\": \"STU-PM-001\",\n  \"employeeNumber\": null\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": null,\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Student Updated\",\n  \"enabled\": true,\n  \"roles\": [\"STUDENT\"],\n  \"studentNumber\": \"VMC-11\",\n  \"studyYear\": 5,\n  \"employeeNumber\": null\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/users/{{studentUserId}}"
           }
         }
@@ -302,7 +302,7 @@
             "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{registrationStudentEmail}}\",\n  \"password\": \"{{registrationStudentPassword}}\",\n  \"firstName\": \"Self Registered\",\n  \"lastName\": \"Student\",\n  \"role\": \"STUDENT\",\n  \"studentNumber\": \"SELF-STU-001\",\n  \"employeeNumber\": null,\n  \"departmentId\": \"{{departmentId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{registrationStudentEmail}}\",\n  \"password\": \"{{registrationStudentPassword}}\",\n  \"firstName\": \"Self Registered\",\n  \"lastName\": \"Student\",\n  \"role\": \"STUDENT\",\n  \"studentNumber\": \"VMC-11\",\n  \"studyYear\": 5,\n  \"employeeNumber\": null,\n  \"departmentId\": \"{{departmentId}}\"\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/auth/register"
           }
         },
@@ -351,7 +351,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/departments/{{departmentId}}/students?query=&page=0&size=20",
+            "url": "{{baseUrl}}/departments/{{departmentId}}/students?studyYear=5&query=&page=0&size=20",
             "description": "Admin-only paginated list of student profiles assigned to the selected department."
           }
         }
@@ -371,13 +371,13 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{courseCode}}\",\n  \"name\": \"Smart Attendance Testing\",\n  \"semester\": \"{{semester}}\",\n  \"academicYear\": \"{{academicYear}}\",\n  \"departmentId\": \"{{departmentId}}\",\n  \"teacherId\": \"{{teacherId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{courseCode}}\",\n  \"name\": \"Smart Attendance Testing\",\n  \"semester\": \"{{semester}}\",\n  \"academicYear\": \"{{academicYear}}\",\n  \"studyYear\": 5,\n  \"departmentId\": \"{{departmentId}}\",\n  \"teacherId\": \"{{teacherId}}\"\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/courses"
           }
         },
         {
           "name": "List Courses",
-          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/courses?query=&departmentId={{departmentId}}&teacherId={{teacherId}}&semester={{semester}}&academicYear={{academicYear}}&page=0&size=20" }
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/courses?query=&departmentId={{departmentId}}&teacherId={{teacherId}}&semester={{semester}}&academicYear={{academicYear}}&studyYear=5&page=0&size=20" }
         },
         {
           "name": "Get Course",
@@ -388,7 +388,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{courseCode}}\",\n  \"name\": \"Smart Attendance Testing Updated\",\n  \"semester\": \"{{semester}}\",\n  \"academicYear\": \"{{academicYear}}\",\n  \"departmentId\": \"{{departmentId}}\",\n  \"teacherId\": \"{{teacherId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{courseCode}}\",\n  \"name\": \"Smart Attendance Testing Updated\",\n  \"semester\": \"{{semester}}\",\n  \"academicYear\": \"{{academicYear}}\",\n  \"studyYear\": 5,\n  \"departmentId\": \"{{departmentId}}\",\n  \"teacherId\": \"{{teacherId}}\"\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/courses/{{courseId}}"
           }
         },
@@ -481,7 +481,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"sessionDate\": \"{{today}}\",\n  \"startTime\": \"{{sessionStart}}\",\n  \"endTime\": \"{{sessionEnd}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"sessionDate\": \"{{today}}\",\n  \"startTime\": \"{{sessionStart}}\",\n  \"endTime\": \"{{sessionEnd}}\",\n  \"rollCallCount\": 3\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/attendance-sessions"
           }
         },
@@ -498,7 +498,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"sessionDate\": \"{{today}}\",\n  \"startTime\": \"{{sessionStart}}\",\n  \"endTime\": \"{{sessionEnd}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"sessionDate\": \"{{today}}\",\n  \"startTime\": \"{{sessionStart}}\",\n  \"endTime\": \"{{sessionEnd}}\",\n  \"rollCallCount\": 3\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}"
           }
         },
@@ -665,7 +665,7 @@
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/reports/attendance/students?period=WEEK&date={{today}}&courseId={{courseId}}&page=0&size=20"
+            "url": "{{baseUrl}}/reports/attendance/students?period=WEEK&date={{today}}&courseId={{courseId}}&studyYear=5&page=0&size=20"
           }
         },
         {
@@ -674,7 +674,7 @@
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/reports/attendance/students?period=MONTH&date={{today}}&courseId={{courseId}}&query=&page=0&size=20"
+            "url": "{{baseUrl}}/reports/attendance/students?period=MONTH&date={{today}}&courseId={{courseId}}&studyYear=5&query=&page=0&size=20"
           }
         },
         {
@@ -683,7 +683,7 @@
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
             "method": "GET",
             "header": [{ "key": "Accept", "value": "application/pdf" }],
-            "url": "{{baseUrl}}/reports/attendance/students/export/pdf?period=WEEK&date={{today}}&courseId={{courseId}}"
+            "url": "{{baseUrl}}/reports/attendance/students/export/pdf?period=WEEK&date={{today}}&courseId={{courseId}}&studyYear=5"
           }
         },
         {
@@ -692,7 +692,7 @@
             "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
             "method": "GET",
             "header": [{ "key": "Accept", "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
-            "url": "{{baseUrl}}/reports/attendance/students/export/excel?period=MONTH&date={{today}}&courseId={{courseId}}"
+            "url": "{{baseUrl}}/reports/attendance/students/export/excel?period=MONTH&date={{today}}&courseId={{courseId}}&studyYear=5"
           }
         },
         {

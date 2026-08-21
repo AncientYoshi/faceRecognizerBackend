@@ -13,6 +13,7 @@ public record RegisterUserResponse(
         RoleName role,
         UUID studentId,
         String studentNumber,
+        Integer studyYear,
         UUID teacherId,
         String employeeNumber,
         UUID departmentId,
