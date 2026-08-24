@@ -47,6 +47,9 @@ public class TimetableEntry {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
+    @Column(name = "roll_call_count", nullable = false)
+    private int rollCallCount = 1;
+
     @Column(name = "room", length = 100)
     private String room;
 
@@ -74,6 +77,7 @@ public class TimetableEntry {
             DayOfWeek dayOfWeek,
             LocalTime startTime,
             LocalTime endTime,
+            int rollCallCount,
             String room,
             LocalDate effectiveFrom,
             LocalDate effectiveTo,
@@ -84,6 +88,7 @@ public class TimetableEntry {
                 dayOfWeek,
                 startTime,
                 endTime,
+                rollCallCount,
                 room,
                 effectiveFrom,
                 effectiveTo,
@@ -96,16 +101,21 @@ public class TimetableEntry {
             DayOfWeek dayOfWeek,
             LocalTime startTime,
             LocalTime endTime,
+            int rollCallCount,
             String room,
             LocalDate effectiveFrom,
             LocalDate effectiveTo,
             boolean active
     ) {
+        if (rollCallCount < 1 || rollCallCount > 6) {
+            throw new IllegalArgumentException("rollCallCount must be between 1 and 6");
+        }
         this.course = course;
         this.dayOfWeek = dayOfWeek;
         this.dayOrder = dayOfWeek.getValue();
         this.startTime = startTime;
         this.endTime = endTime;
+        this.rollCallCount = rollCallCount;
         this.room = normalizeRoom(room);
         this.effectiveFrom = effectiveFrom;
         this.effectiveTo = effectiveTo;
@@ -163,6 +173,10 @@ public class TimetableEntry {
 
     public LocalTime getEndTime() {
         return endTime;
+    }
+
+    public int getRollCallCount() {
+        return rollCallCount;
     }
 
     public String getRoom() {

@@ -75,6 +75,11 @@ app:
   hardware:
     device-id: ${HARDWARE_DEVICE_ID:CLASSROOM-01}
     device-key: ${HARDWARE_DEVICE_KEY:change-this-device-secret}
+  attendance:
+    automation:
+      enabled: ${ATTENDANCE_AUTOMATION_ENABLED:true}
+      interval: ${ATTENDANCE_AUTOMATION_INTERVAL:30s}
+      initial-delay: ${ATTENDANCE_AUTOMATION_INITIAL_DELAY:10s}
   notifications:
     mail:
       enabled: ${MAIL_NOTIFICATIONS_ENABLED:false}

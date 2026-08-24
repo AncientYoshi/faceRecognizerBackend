@@ -85,6 +85,7 @@ public class StudentTimetableService {
                 date,
                 timetable.getStartTime(),
                 timetable.getEndTime(),
+                timetable.getRollCallCount(),
                 timetable.getRoom(),
                 date.equals(today)
         );

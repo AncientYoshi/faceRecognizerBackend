@@ -18,6 +18,7 @@ public record StudentTimetableEntryResponse(
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime,
+        int rollCallCount,
         String room,
         boolean today
 ) {

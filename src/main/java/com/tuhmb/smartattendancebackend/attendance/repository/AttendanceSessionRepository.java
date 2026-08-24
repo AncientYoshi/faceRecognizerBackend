@@ -21,6 +21,79 @@ public interface AttendanceSessionRepository
 
     Optional<AttendanceSession> findByIdempotencyKey(UUID idempotencyKey);
 
+    Optional<AttendanceSession> findByTimetableEntryIdAndSessionDate(UUID timetableEntryId, LocalDate sessionDate);
+
+    Optional<AttendanceSession> findFirstByCourseIdAndSessionDateAndStartTimeAndEndTime(
+            UUID courseId,
+            LocalDate sessionDate,
+            Instant startTime,
+            Instant endTime
+    );
+
+    @EntityGraph(attributePaths = {"course", "course.teacher", "teacher.user", "timetableEntry"})
+    List<AttendanceSession> findByStatusAndStartTimeLessThanEqual(
+            AttendanceSessionStatus status,
+            Instant now
+    );
+
+    @EntityGraph(attributePaths = {"course", "course.teacher", "teacher.user", "timetableEntry"})
+    List<AttendanceSession> findByStatusAndEndTimeLessThanEqual(
+            AttendanceSessionStatus status,
+            Instant now
+    );
+
+    @EntityGraph(attributePaths = {"course", "timetableEntry"})
+    @Query("""
+            select session
+            from AttendanceSession session
+            where session.status = :status
+              and session.startTime <= :now
+              and session.endTime >= :now
+              and session.course.id = :courseId
+            order by session.startTime asc
+            """)
+    List<AttendanceSession> findActiveForCourse(
+            @Param("courseId") UUID courseId,
+            @Param("status") AttendanceSessionStatus status,
+            @Param("now") Instant now
+    );
+
+    @EntityGraph(attributePaths = {"course", "timetableEntry"})
+    @Query("""
+            select session
+            from AttendanceSession session
+            join session.timetableEntry timetable
+            where session.status = :status
+              and session.startTime <= :now
+              and session.endTime >= :now
+              and lower(trim(timetable.room)) = lower(trim(:room))
+            order by session.startTime asc
+            """)
+    List<AttendanceSession> findActiveForRoom(
+            @Param("room") String room,
+            @Param("status") AttendanceSessionStatus status,
+            @Param("now") Instant now
+    );
+
+    @EntityGraph(attributePaths = {"course", "timetableEntry"})
+    @Query("""
+            select session
+            from AttendanceSession session
+            join session.timetableEntry timetable
+            where session.status = :status
+              and session.startTime <= :now
+              and session.endTime >= :now
+              and session.course.id = :courseId
+              and lower(trim(timetable.room)) = lower(trim(:room))
+            order by session.startTime asc
+            """)
+    List<AttendanceSession> findActiveForCourseAndRoom(
+            @Param("courseId") UUID courseId,
+            @Param("room") String room,
+            @Param("status") AttendanceSessionStatus status,
+            @Param("now") Instant now
+    );
+
     @Query("""
             select coalesce(sum(session.rollCallCount), 0)
             from AttendanceSession session

@@ -16,6 +16,8 @@ import com.tuhmb.smartattendancebackend.face.client.RegisterFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.client.VerifyFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
 import com.tuhmb.smartattendancebackend.face.domain.FaceRegistration;
+import com.tuhmb.smartattendancebackend.hardware.domain.HardwareDevice;
+import com.tuhmb.smartattendancebackend.hardware.repository.HardwareDeviceRepository;
 import com.tuhmb.smartattendancebackend.user.domain.AppUser;
 import com.tuhmb.smartattendancebackend.user.domain.Role;
 import com.tuhmb.smartattendancebackend.user.domain.RoleName;
@@ -26,6 +28,7 @@ import com.tuhmb.smartattendancebackend.user.repository.StudentRepository;
 import com.tuhmb.smartattendancebackend.user.repository.TeacherRepository;
 import com.tuhmb.smartattendancebackend.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -89,6 +92,8 @@ class AiIntegrationFlowTest {
     @Autowired
     private FaceRegistrationRepository faceRegistrationRepository;
     @Autowired
+    private HardwareDeviceRepository hardwareDeviceRepository;
+    @Autowired
     private RefreshTokenRepository refreshTokenRepository;
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -97,14 +102,21 @@ class AiIntegrationFlowTest {
     private TestFaceAiClient faceAiClient;
 
     private UUID studentId;
+    private UUID courseId;
     private UUID firstSessionId;
     private UUID secondSessionId;
+
+    @AfterEach
+    void cleanUpHardwareDevices() {
+        hardwareDeviceRepository.deleteAll();
+    }
 
     @BeforeEach
     void setUp() {
         faceAiClient.reset();
         attendanceRepository.deleteAll();
         faceRegistrationRepository.deleteAll();
+        hardwareDeviceRepository.deleteAll();
         sessionRepository.deleteAll();
         enrollmentRepository.deleteAll();
         courseRepository.deleteAll();
@@ -115,6 +127,7 @@ class AiIntegrationFlowTest {
         transactionTemplate.executeWithoutResult(status -> {
             Role studentRole = roleRepository.findByName(RoleName.STUDENT).orElseThrow();
             Role teacherRole = roleRepository.findByName(RoleName.TEACHER).orElseThrow();
+            Role adminRole = roleRepository.findByName(RoleName.ADMIN).orElseThrow();
             AppUser studentUser = userRepository.save(new AppUser(
                     "student@example.com",
                     passwordEncoder.encode("student-password"),
@@ -128,6 +141,13 @@ class AiIntegrationFlowTest {
                     "Grace",
                     "Teacher",
                     Set.of(teacherRole)
+            ));
+            userRepository.save(new AppUser(
+                    "admin@example.com",
+                    passwordEncoder.encode("admin-password"),
+                    "System",
+                    "Administrator",
+                    Set.of(adminRole)
             ));
             Department department = departmentRepository.save(
                     new Department("CSE", "Computer Science", null)
@@ -170,6 +190,7 @@ class AiIntegrationFlowTest {
             sessionRepository.save(second);
 
             studentId = student.getId();
+            courseId = course.getId();
             firstSessionId = first.getId();
             secondSessionId = second.getId();
         });
@@ -334,6 +355,99 @@ class AiIntegrationFlowTest {
 
         assertEquals(1, attendanceRepository.count());
         assertEquals(3, faceAiClient.identifyCalls.get());
+    }
+
+    @Test
+    void managedEsp32DiscoversItsSingleActiveCourseSession() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> {
+            Student student = studentRepository.findById(studentId).orElseThrow();
+            faceRegistrationRepository.save(new FaceRegistration(student, "embedding-" + studentId));
+            Course course = sessionRepository.findById(firstSessionId).orElseThrow().getCourse();
+            hardwareDeviceRepository.save(new HardwareDevice(
+                    "LAB-CAMERA-01",
+                    "AI lab camera",
+                    passwordEncoder.encode("test-device-secret-123"),
+                    null,
+                    course,
+                    true
+            ));
+        });
+
+        mockMvc.perform(get("/hardware/v1/attendance/active-session")
+                        .header("X-Device-Id", "LAB-CAMERA-01")
+                        .header("X-Device-Key", "test-device-secret-123"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(
+                        "Multiple active attendance sessions match this hardware device; narrow its room/course binding"
+                ));
+
+        transactionTemplate.executeWithoutResult(status -> {
+            AttendanceSession second = sessionRepository.findById(secondSessionId).orElseThrow();
+            second.close();
+        });
+
+        mockMvc.perform(get("/hardware/v1/attendance/active-session")
+                        .header("X-Device-Id", "lab-camera-01")
+                        .header("X-Device-Key", "test-device-secret-123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sessionId").value(firstSessionId.toString()))
+                .andExpect(jsonPath("$.courseCode").value("CSE-AI-101"))
+                .andExpect(jsonPath("$.rollCallCount").value(1));
+
+        faceAiClient.identificationResponse = new IdentifyFaceAiResponse(
+                true,
+                studentId,
+                0.97891,
+                true,
+                "MATCHED"
+        );
+
+        mockMvc.perform(multipart("/hardware/v1/attendance/identify")
+                        .file(faceImage())
+                        .header("X-Device-Id", "LAB-CAMERA-01")
+                        .header("X-Device-Key", "test-device-secret-123"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verified").value(true))
+                .andExpect(jsonPath("$.sessionId").value(firstSessionId.toString()))
+                .andExpect(jsonPath("$.courseCode").value("CSE-AI-101"))
+                .andExpect(jsonPath("$.rollCallCount").value(1))
+                .andExpect(jsonPath("$.studentId").value(studentId.toString()))
+                .andExpect(jsonPath("$.attendanceRecorded").value(true));
+
+        assertEquals(1, faceAiClient.identifyCalls.get());
+        assertEquals(1, attendanceRepository.count());
+    }
+
+    @Test
+    void administratorRegistersAndListsHardwareDeviceWithoutExposingItsSecret() throws Exception {
+        String adminToken = login("admin@example.com", "admin-password");
+
+        mockMvc.perform(post("/hardware-devices")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "deviceId": "classroom-api-01",
+                                  "name": "API classroom camera",
+                                  "deviceKey": "api-device-secret-123",
+                                  "room": null,
+                                  "courseId": "%s",
+                                  "enabled": true
+                                }
+                                """.formatted(courseId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.deviceId").value("CLASSROOM-API-01"))
+                .andExpect(jsonPath("$.courseId").value(courseId.toString()))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.deviceKey").doesNotExist())
+                .andExpect(jsonPath("$.keyHash").doesNotExist());
+
+        mockMvc.perform(get("/hardware-devices")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].deviceId").value("CLASSROOM-API-01"))
+                .andExpect(jsonPath("$.content[0].keyHash").doesNotExist());
     }
 
     private String login(String email, String password) throws Exception {

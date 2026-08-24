@@ -4,6 +4,8 @@ import com.tuhmb.smartattendancebackend.report.service.AttendanceReportFilter;
 import com.tuhmb.smartattendancebackend.report.service.AttendanceReportService;
 import com.tuhmb.smartattendancebackend.report.service.ReportFile;
 import com.tuhmb.smartattendancebackend.report.service.StudentAttendancePercentageService;
+import com.tuhmb.smartattendancebackend.report.service.TeacherCohortAttendanceService;
+import com.tuhmb.smartattendancebackend.attendance.api.StudentAttendancePeriod;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -31,13 +33,30 @@ public class AttendanceReportController {
 
     private final AttendanceReportService reportService;
     private final StudentAttendancePercentageService percentageService;
+    private final TeacherCohortAttendanceService cohortAttendanceService;
 
     public AttendanceReportController(
             AttendanceReportService reportService,
-            StudentAttendancePercentageService percentageService
+            StudentAttendancePercentageService percentageService,
+            TeacherCohortAttendanceService cohortAttendanceService
     ) {
         this.reportService = reportService;
         this.percentageService = percentageService;
+        this.cohortAttendanceService = cohortAttendanceService;
+    }
+
+    @GetMapping("/students/overall")
+    @PreAuthorize("hasRole('TEACHER')")
+    public TeacherCohortAttendanceResponse studentOverallAttendance(
+            @RequestParam @Min(1) @Max(6) Integer studyYear,
+            @RequestParam(defaultValue = "ALL") StudentAttendancePeriod period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) String query,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return cohortAttendanceService.report(studyYear, period, date, query, page, size, jwt);
     }
 
     @GetMapping("/students")

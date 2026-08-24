@@ -59,6 +59,7 @@
     { "key": "faceImagePath", "value": "/absolute/path/to/student-face.jpg" },
     { "key": "hardwareDeviceId", "value": "CLASSROOM-01" },
     { "key": "hardwareDeviceKey", "value": "change-this-device-secret" },
+    { "key": "hardwareDeviceUuid", "value": "" },
     { "key": "today", "value": "" },
     { "key": "weekStart", "value": "" },
     { "key": "currentMonth", "value": "" },
@@ -441,7 +442,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"dayOfWeek\": \"MONDAY\",\n  \"startTime\": \"08:30:00\",\n  \"endTime\": \"10:00:00\",\n  \"room\": \"Lab PM-2\",\n  \"effectiveFrom\": \"{{weekStart}}\",\n  \"effectiveTo\": null,\n  \"active\": true\n}",
+              "raw": "{\n  \"courseId\": \"{{courseId}}\",\n  \"dayOfWeek\": \"MONDAY\",\n  \"startTime\": \"08:30:00\",\n  \"endTime\": \"10:00:00\",\n  \"rollCallCount\": 2,\n  \"room\": \"Lab PM-2\",\n  \"effectiveFrom\": \"{{weekStart}}\",\n  \"effectiveTo\": null,\n  \"active\": true\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": "{{baseUrl}}/timetables"
@@ -540,6 +541,39 @@
       "name": "07 - Attendance Verification and Records",
       "item": [
         {
+          "name": "Register Course-Bound ESP32 Device - Save ID",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "if (pm.response.code === 201) { pm.environment.set('hardwareDeviceUuid', pm.response.json().id); }"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{hardwareDeviceId}}\",\n  \"name\": \"Postman classroom camera\",\n  \"deviceKey\": \"{{hardwareDeviceKey}}\",\n  \"room\": null,\n  \"courseId\": \"{{courseId}}\",\n  \"enabled\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/hardware-devices",
+            "description": "Admin-only. The plaintext key is hashed and never included in the response. Use a unique random key for a real device."
+          }
+        },
+        {
+          "name": "ESP32 Get Automatically Resolved Active Session",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "X-Device-Id", "value": "{{hardwareDeviceId}}", "type": "text" },
+              { "key": "X-Device-Key", "value": "{{hardwareDeviceKey}}", "type": "text" }
+            ],
+            "url": "{{baseUrl}}/hardware/v1/attendance/active-session",
+            "description": "Returns exactly one currently active session matching the device room/course binding; zero or multiple matches return 409."
+          }
+        },
+        {
           "name": "Verify Attendance - Save Attendance ID",
           "event": [{
             "listen": "test",
@@ -574,8 +608,8 @@
               "mode": "formdata",
               "formdata": [{ "key": "image", "type": "file", "src": "{{faceImagePath}}", "description": "Simulates the JPEG captured by the ESP32-CAM." }]
             },
-            "url": "{{baseUrl}}/hardware/v1/attendance/identify?sessionId={{sessionId}}",
-            "description": "Uses device headers instead of a JWT. Because the student verification request runs first, this normally demonstrates the ALREADY_VERIFIED response."
+            "url": "{{baseUrl}}/hardware/v1/attendance/identify",
+            "description": "Uses device headers instead of a JWT and automatically resolves the active session from the registered device binding. Because student verification runs first, this normally demonstrates ALREADY_VERIFIED."
           }
         },
         {
@@ -635,6 +669,16 @@
             "header": [],
             "url": "{{baseUrl}}/dashboard/student?date={{today}}"
           }
+        },
+        {
+          "name": "Student Attendance Screen - All Courses",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{studentAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/students/me/attendance-summary?period=ALL&date={{today}}",
+            "description": "Returns every enrolled course and dynamically divides the sum of course percentages by courseCount. Change period to MONTH or WEEK for attendance-screen filters."
+          }
         }
       ]
     },
@@ -666,6 +710,16 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/reports/attendance/students?period=WEEK&date={{today}}&courseId={{courseId}}&studyYear=5&page=0&size=20"
+          }
+        },
+        {
+          "name": "Teacher Year 5 - Overall Attendance by Student",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/reports/attendance/students/overall?studyYear=5&period=ALL&date={{today}}&query=&page=0&size=20",
+            "description": "One row per Year-5 student in the authenticated teacher's department. Overall attendance is the arithmetic mean across each student's actual enrolled course count. Change studyYear to 1-6 and period to ALL, MONTH, or WEEK."
           }
         },
         {
@@ -795,6 +849,10 @@
         {
           "name": "Unenroll Student",
           "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/courses/{{courseId}}/enrollments/{{studentId}}" }
+        },
+        {
+          "name": "Delete Hardware Device",
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/hardware-devices/{{hardwareDeviceUuid}}" }
         },
         {
           "name": "Delete Course",

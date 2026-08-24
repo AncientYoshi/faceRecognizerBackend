@@ -29,9 +29,20 @@ public class HardwareAttendanceController {
             @RequestHeader("X-Device-Id") String deviceId,
             @Parameter(description = "Configured ESP32 device secret", required = true)
             @RequestHeader("X-Device-Key") String deviceKey,
-            @RequestParam UUID sessionId,
+            @Parameter(description = "Optional explicit session UUID; omit it for device-bound automatic discovery")
+            @RequestParam(required = false) UUID sessionId,
             @RequestPart("image") MultipartFile image
     ) {
         return hardwareAttendanceService.identify(deviceId, deviceKey, sessionId, image);
+    }
+
+    @org.springframework.web.bind.annotation.GetMapping("/attendance/active-session")
+    public HardwareActiveSessionResponse activeSession(
+            @Parameter(description = "Configured ESP32 device identifier", required = true)
+            @RequestHeader("X-Device-Id") String deviceId,
+            @Parameter(description = "Configured ESP32 device secret", required = true)
+            @RequestHeader("X-Device-Key") String deviceKey
+    ) {
+        return hardwareAttendanceService.activeSession(deviceId, deviceKey);
     }
 }

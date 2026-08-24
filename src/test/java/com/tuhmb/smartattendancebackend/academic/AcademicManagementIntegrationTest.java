@@ -6,6 +6,7 @@ import com.tuhmb.smartattendancebackend.academic.repository.DepartmentRepository
 import com.tuhmb.smartattendancebackend.academic.repository.EnrollmentRepository;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceRepository;
+import com.tuhmb.smartattendancebackend.attendance.service.AttendanceSessionAutomationService;
 import com.tuhmb.smartattendancebackend.auth.repository.RefreshTokenRepository;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
 import com.tuhmb.smartattendancebackend.timetable.repository.TimetableRepository;
@@ -27,6 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,6 +63,8 @@ class AcademicManagementIntegrationTest {
     private FaceRegistrationRepository faceRegistrationRepository;
     @Autowired
     private TimetableRepository timetableRepository;
+    @Autowired
+    private AttendanceSessionAutomationService sessionAutomationService;
     @Autowired
     private PasswordEncoder passwordEncoder;
 
@@ -239,8 +243,24 @@ class AcademicManagementIntegrationTest {
                                 """.formatted(courseId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.courseId").value(courseId))
+                .andExpect(jsonPath("$.rollCallCount").value(2))
                 .andReturn();
         String timetableId = JsonPath.read(timetable.getResponse().getContentAsString(), "$.id");
+
+        sessionAutomationService.synchronizeAt(Instant.parse("2026-08-03T02:01:00Z"));
+        var automaticSession = sessionRepository
+                .findByTimetableEntryIdAndSessionDate(
+                        UUID.fromString(timetableId),
+                        java.time.LocalDate.parse("2026-08-03")
+                )
+                .orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(automaticSession.getStatus().name()).isEqualTo("ACTIVE");
+        org.assertj.core.api.Assertions.assertThat(automaticSession.getRollCallCount()).isEqualTo(2);
+
+        sessionAutomationService.synchronizeAt(Instant.parse("2026-08-03T03:31:00Z"));
+        org.assertj.core.api.Assertions.assertThat(
+                sessionRepository.findById(automaticSession.getId()).orElseThrow().getStatus().name()
+        ).isEqualTo("CLOSED");
 
         String studentToken = login("student@example.com", "student-password");
 
@@ -270,6 +290,7 @@ class AcademicManagementIntegrationTest {
                 .andExpect(jsonPath("$.entries[0].dayOfWeek").value("MONDAY"))
                 .andExpect(jsonPath("$.entries[0].startTime").value("08:30:00"))
                 .andExpect(jsonPath("$.entries[0].endTime").value("10:00:00"))
+                .andExpect(jsonPath("$.entries[0].rollCallCount").value(2))
                 .andExpect(jsonPath("$.entries[0].room").value("Lab 2"));
 
         mockMvc.perform(get("/timetables")

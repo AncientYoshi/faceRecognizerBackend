@@ -1,6 +1,6 @@
 # ESP32-CAM attendance integration
 
-The ESP32 sends only a JPEG, a device ID/key, and an active attendance-session ID. Spring Boot determines the eligible students, asks FastAPI to identify the face, validates the result, and records attendance.
+The ESP32 sends only a JPEG and its device ID/key. Spring Boot resolves the active attendance session from the device's room/course binding, determines the eligible students, asks FastAPI to identify the face, validates the result, and records attendance. Course `studyYear`, session ID, and `rollCallCount` are server-side values and must not be sent by the ESP32. If a session has `rollCallCount: 3`, one successful device verification counts all three calls as present in reports.
 
 ```text
 ESP32-CAM
@@ -12,21 +12,53 @@ ESP32-CAM
 
 ## Spring Boot configuration
 
-Set real values in the environment before starting Spring Boot:
+The environment values remain as a compatibility fallback for the older explicit-`sessionId` request:
 
 ```bash
 export HARDWARE_DEVICE_ID=CLASSROOM-01
 export HARDWARE_DEVICE_KEY='replace-with-a-long-random-device-secret'
 ```
 
-The prototype supports one configured device. Use HTTPS and a device table with hashed, individually revocable secrets before deploying multiple classroom devices.
-
-Test Spring before flashing the ESP32:
+Automatic discovery uses database-backed devices. Log in as an administrator, generate a long random key, and register each camera. Bind it to a room, a course, or both:
 
 ```bash
-curl -X POST 'http://localhost:8080/hardware/v1/attendance/identify?sessionId=ACTIVE_SESSION_UUID' \
+openssl rand -base64 32
+
+curl -X POST 'https://smart-attendance-api.duckdns.org/hardware-devices' \
+  -H 'Authorization: Bearer ADMIN_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId": "CLASSROOM-01",
+    "name": "Automation Lab Camera",
+    "deviceKey": "PASTE_THE_GENERATED_SECRET_HERE",
+    "room": "Automation Lab",
+    "courseId": null,
+    "enabled": true
+  }'
+```
+
+The plaintext `deviceKey` is accepted only in the create/update request; Spring stores a BCrypt hash and never returns the secret. Keep the generated value because it must be flashed into that ESP32.
+
+Administrator device-management endpoints:
+
+- `GET /hardware-devices?query=&enabled=true&page=0&size=20`
+- `GET /hardware-devices/{id}`
+- `POST /hardware-devices`
+- `PUT /hardware-devices/{id}` — set `newDeviceKey` to rotate the secret, or `null` to keep it
+- `DELETE /hardware-devices/{id}`
+
+`room` must exactly correspond to the timetable room (comparison ignores case and surrounding spaces). A course-only binding is useful for a movable course camera. Setting both is safest because both must match. If no session matches, or more than one session matches, Spring returns `409` and records nothing.
+
+Test the deployed Spring API before flashing the ESP32:
+
+```bash
+curl 'https://smart-attendance-api.duckdns.org/hardware/v1/attendance/active-session' \
   -H 'X-Device-Id: CLASSROOM-01' \
-  -H 'X-Device-Key: replace-with-a-long-random-device-secret' \
+  -H 'X-Device-Key: PASTE_THE_GENERATED_SECRET_HERE'
+
+curl -X POST 'https://smart-attendance-api.duckdns.org/hardware/v1/attendance/identify' \
+  -H 'X-Device-Id: CLASSROOM-01' \
+  -H 'X-Device-Key: PASTE_THE_GENERATED_SECRET_HERE' \
   -F 'image=@/absolute/path/face.jpg'
 ```
 
@@ -36,6 +68,9 @@ Successful new attendance:
 {
   "verified": true,
   "reason": "ATTENDANCE_VERIFIED",
+  "sessionId": "62d2581e-cf21-4e92-af33-37ab45fa7c34",
+  "courseCode": "VMC-501",
+  "rollCallCount": 3,
   "studentId": "65788c5d-629c-426d-986d-eb77f42b7895",
   "rollNumber": "VMC 11",
   "attendanceRecorded": true,
@@ -66,19 +101,20 @@ Grounds     -> common GND
 
 GPIO15 is a boot-strapping pin. Keep the buzzer driver from pulling it high during boot. Use a stable 5 V supply capable of powering the ESP32-CAM; camera/Wi-Fi current spikes commonly cause resets on weak USB adapters.
 
-Before flashing, edit these sketch constants:
+The supplied sketch is configured for `smart-attendance-api.duckdns.org` over certificate-verified HTTPS on port 443. Before flashing, edit these constants:
 
 ```cpp
 WIFI_SSID
 WIFI_PASSWORD
-SERVER_HOST
-SERVER_PORT
-SESSION_ID
 DEVICE_ID
 DEVICE_KEY
 ```
 
-`SERVER_HOST` must be the LAN IP of the Spring Boot machine. On macOS, check it with `ipconfig getifaddr en0`. The computer and ESP32 must be on the same reachable network, and the firewall must allow TCP port 8080.
+`DEVICE_ID` and `DEVICE_KEY` must match the database-backed device registered through `/hardware-devices`. The timetable automation creates, starts, and closes sessions; the ESP32 discovers the one active session matching its binding. No session UUID needs to be flashed or changed. Do not put `studyYear` or `rollCallCount` in the device sketch.
+
+For backward compatibility, the older environment-configured device can still call `POST /hardware/v1/attendance/identify?sessionId=...`. It cannot use automatic discovery because it has no database room/course binding.
+
+The ESP32 synchronizes UTC time through NTP before connecting because TLS certificate validation requires a valid clock. The embedded trust anchor is Let's Encrypt ISRG Root X1, not the renewable DuckDNS leaf certificate, so normal Certbot renewal does not require reflashing the board.
 
 ## FastAPI requirement
 

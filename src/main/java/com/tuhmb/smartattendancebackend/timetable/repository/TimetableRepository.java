@@ -73,6 +73,49 @@ public interface TimetableRepository
             @Param("weekEnd") LocalDate weekEnd
     );
 
+    @EntityGraph(attributePaths = {"course", "course.teacher", "course.teacher.user", "course.department"})
+    @Query("""
+            SELECT timetable
+            FROM TimetableEntry timetable
+            WHERE timetable.active = TRUE
+              AND timetable.dayOfWeek = :dayOfWeek
+              AND (timetable.effectiveFrom IS NULL OR timetable.effectiveFrom <= :date)
+              AND (timetable.effectiveTo IS NULL OR timetable.effectiveTo >= :date)
+            ORDER BY timetable.startTime, timetable.course.code
+            """)
+    List<TimetableEntry> findActiveEntriesForDate(
+            @Param("dayOfWeek") DayOfWeek dayOfWeek,
+            @Param("date") LocalDate date
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(timetable.rollCallCount), 0)
+            FROM TimetableEntry timetable
+            WHERE timetable.course.department.id = :departmentId
+              AND timetable.course.studyYear = :studyYear
+              AND timetable.dayOfWeek = :dayOfWeek
+              AND timetable.active = TRUE
+              AND (:excludedId IS NULL OR timetable.id <> :excludedId)
+              AND (
+                    :effectiveTo IS NULL
+                    OR timetable.effectiveFrom IS NULL
+                    OR timetable.effectiveFrom <= :effectiveTo
+                  )
+              AND (
+                    :effectiveFrom IS NULL
+                    OR timetable.effectiveTo IS NULL
+                    OR timetable.effectiveTo >= :effectiveFrom
+                  )
+            """)
+    long sumCohortRollCallsForPeriod(
+            @Param("departmentId") UUID departmentId,
+            @Param("studyYear") Integer studyYear,
+            @Param("dayOfWeek") DayOfWeek dayOfWeek,
+            @Param("effectiveFrom") LocalDate effectiveFrom,
+            @Param("effectiveTo") LocalDate effectiveTo,
+            @Param("excludedId") UUID excludedId
+    );
+
     @Query("""
         SELECT COUNT(timetable)
         FROM TimetableEntry timetable

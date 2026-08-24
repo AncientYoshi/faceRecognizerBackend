@@ -121,44 +121,44 @@ class StudentDashboardIntegrationTest {
         mockMvc.perform(get("/dashboard/student")
                         .header("Authorization", bearer(teacherToken)))
                 .andExpect(status().isForbidden());
+
+        String studentToken = login("dashboard.student@example.com", "student-password");
+        mockMvc.perform(get("/reports/attendance/students/overall")
+                        .param("studyYear", "5")
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/students/me/attendance-summary")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void studentAttendanceSummaryReturnsEveryCourseForTheSelectedMonth() throws Exception {
+        String studentToken = login("dashboard.student@example.com", "student-password");
+
+        mockMvc.perform(get("/students/me/attendance-summary")
+                        .param("period", "MONTH")
+                        .param("date", today.toString())
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.studyYear").value(5))
+                .andExpect(jsonPath("$.period").value("MONTH"))
+                .andExpect(jsonPath("$.courseCount").value(1))
+                .andExpect(jsonPath("$.calculationMethod")
+                        .value("ARITHMETIC_MEAN_OF_COURSE_PERCENTAGES"))
+                .andExpect(jsonPath("$.averageAttendancePercentage").value(50.0))
+                .andExpect(jsonPath("$.totalEligibleRollCalls").value(2))
+                .andExpect(jsonPath("$.totalPresentRollCalls").value(1))
+                .andExpect(jsonPath("$.totalAbsentRollCalls").value(1))
+                .andExpect(jsonPath("$.courses.length()").value(1))
+                .andExpect(jsonPath("$.courses[0].courseCode").value("DASH-101"))
+                .andExpect(jsonPath("$.courses[0].attendancePercentage").value(50.0));
     }
 
     @Test
     void overallPercentageIsTheAverageOfAllSevenAssignedCourses() throws Exception {
-        transactionTemplate.executeWithoutResult(status -> {
-            Student student = studentRepository.findByStudentNumberIgnoreCase("DASH-S-001").orElseThrow();
-            Course existingCourse = courseRepository.findByCodeIgnoreCase("DASH-101").orElseThrow();
-            Teacher teacher = existingCourse.getTeacher();
-            Department department = existingCourse.getDepartment();
-            Instant now = Instant.now();
-            for (int number = 2; number <= 7; number++) {
-                Course course = courseRepository.save(new Course(
-                        "DASH-10" + number,
-                        "Dashboard Course " + number,
-                        "FIRST",
-                        "2026-2027",
-                        5,
-                        department,
-                        teacher
-                ));
-                enrollmentRepository.save(new Enrollment(student, course));
-                LocalDate date = today.minusDays(number);
-                AttendanceSession session = closedSession(
-                        course,
-                        teacher,
-                        date,
-                        now.minusSeconds(number * 10_000L),
-                        now.minusSeconds(number * 10_000L - 3_600L)
-                );
-                attendanceRepository.save(new Attendance(
-                        student,
-                        course,
-                        session,
-                        new BigDecimal("0.96000"),
-                        session.getEndTime().minusSeconds(60)
-                ));
-            }
-        });
+        transactionTemplate.executeWithoutResult(status -> addFullyAttendedCourses(7));
 
         String studentToken = login("dashboard.student@example.com", "student-password");
         mockMvc.perform(get("/dashboard/student")
@@ -166,6 +166,101 @@ class StudentDashboardIntegrationTest {
                         .header("Authorization", bearer(studentToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.overallAttendancePercentage").value(95.24));
+
+        mockMvc.perform(get("/students/me/attendance-summary")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.courseCount").value(7))
+                .andExpect(jsonPath("$.averageAttendancePercentage").value(95.24))
+                .andExpect(jsonPath("$.totalEligibleRollCalls").value(9))
+                .andExpect(jsonPath("$.totalPresentRollCalls").value(8))
+                .andExpect(jsonPath("$.totalAbsentRollCalls").value(1))
+                .andExpect(jsonPath("$.courses.length()").value(7))
+                .andExpect(jsonPath("$.courses[0].courseCode").value("DASH-101"))
+                .andExpect(jsonPath("$.courses[0].attendancePercentage").value(66.67))
+                .andExpect(jsonPath("$.courses[6].courseCode").value("DASH-107"))
+                .andExpect(jsonPath("$.courses[6].attendancePercentage").value(100.0));
+
+        String teacherToken = login("dashboard.teacher@example.com", "teacher-password");
+        mockMvc.perform(get("/reports/attendance/students/overall")
+                        .param("studyYear", "5")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.departmentCode").value("DASH"))
+                .andExpect(jsonPath("$.studyYear").value(5))
+                .andExpect(jsonPath("$.calculationMethod")
+                        .value("ARITHMETIC_MEAN_OF_COURSE_PERCENTAGES"))
+                .andExpect(jsonPath("$.students.totalElements").value(1))
+                .andExpect(jsonPath("$.students.content[0].studentNumber").value("DASH-S-001"))
+                .andExpect(jsonPath("$.students.content[0].studentName").value("Dashboard Student"))
+                .andExpect(jsonPath("$.students.content[0].studyYear").value(5))
+                .andExpect(jsonPath("$.students.content[0].courseCount").value(7))
+                .andExpect(jsonPath("$.students.content[0].overallAttendancePercentage").value(95.24))
+                .andExpect(jsonPath("$.students.content[0].totalEligibleRollCalls").value(9))
+                .andExpect(jsonPath("$.students.content[0].totalPresentRollCalls").value(8))
+                .andExpect(jsonPath("$.students.content[0].totalAbsentRollCalls").value(1));
+
+        mockMvc.perform(get("/reports/attendance/students/overall")
+                        .param("studyYear", "4")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.students.totalElements").value(0));
+    }
+
+    @Test
+    void attendanceAverageUsesSixAsDivisorWhenSixCoursesAreAssigned() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> addFullyAttendedCourses(6));
+
+        String studentToken = login("dashboard.student@example.com", "student-password");
+        mockMvc.perform(get("/students/me/attendance-summary")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.courseCount").value(6))
+                .andExpect(jsonPath("$.averageAttendancePercentage").value(94.45))
+                .andExpect(jsonPath("$.totalEligibleRollCalls").value(8))
+                .andExpect(jsonPath("$.totalPresentRollCalls").value(7))
+                .andExpect(jsonPath("$.courses.length()").value(6));
+    }
+
+    private void addFullyAttendedCourses(int finalCourseNumber) {
+        Student student = studentRepository.findByStudentNumberIgnoreCase("DASH-S-001").orElseThrow();
+        Course existingCourse = courseRepository.findByCodeIgnoreCase("DASH-101").orElseThrow();
+        Teacher teacher = existingCourse.getTeacher();
+        Department department = existingCourse.getDepartment();
+        Instant now = Instant.now();
+        for (int number = 2; number <= finalCourseNumber; number++) {
+            Course course = courseRepository.save(new Course(
+                    "DASH-10" + number,
+                    "Dashboard Course " + number,
+                    "FIRST",
+                    "2026-2027",
+                    5,
+                    department,
+                    teacher
+            ));
+            enrollmentRepository.save(new Enrollment(student, course));
+            LocalDate date = today.minusDays(number);
+            AttendanceSession session = closedSession(
+                    course,
+                    teacher,
+                    date,
+                    now.minusSeconds(number * 10_000L),
+                    now.minusSeconds(number * 10_000L - 3_600L)
+            );
+            attendanceRepository.save(new Attendance(
+                    student,
+                    course,
+                    session,
+                    new BigDecimal("0.96000"),
+                    session.getEndTime().minusSeconds(60)
+            ));
+        }
     }
 
     private void createDashboardData() {

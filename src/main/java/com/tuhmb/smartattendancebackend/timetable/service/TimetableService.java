@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
@@ -37,15 +38,16 @@ public class TimetableService {
         Course course = findCourse(request.courseId());
 
         boolean active = request.active() == null || request.active();
-
         validateRequest(request);
-        validateConflicts(request, null, active);
+        int rollCallCount = resolveRollCallCount(request);
+        validateConflicts(request, course, rollCallCount, null, active);
 
         TimetableEntry timetable = new TimetableEntry(
                 course,
                 request.dayOfWeek(),
                 request.startTime(),
                 request.endTime(),
+                rollCallCount,
                 request.room(),
                 request.effectiveFrom(),
                 request.effectiveTo(),
@@ -89,15 +91,16 @@ public class TimetableService {
         boolean active = request.active() == null
                 ? timetable.isActive()
                 : request.active();
-
         validateRequest(request);
-        validateConflicts(request, id, active);
+        int rollCallCount = resolveRollCallCount(request);
+        validateConflicts(request, course, rollCallCount, id, active);
 
         timetable.update(
                 course,
                 request.dayOfWeek(),
                 request.startTime(),
                 request.endTime(),
+                rollCallCount,
                 request.room(),
                 request.effectiveFrom(),
                 request.effectiveTo(),
@@ -130,11 +133,30 @@ public class TimetableService {
 
     private void validateConflicts(
             TimetableRequest request,
+            Course course,
+            int rollCallCount,
             UUID excludedId,
             boolean resultingActive
     ) {
         if (!resultingActive) {
             return;
+        }
+
+        if (course.getStudyYear() == null) {
+            throw new ConflictException("Course study year must be assigned before creating a timetable");
+        }
+        long cohortRollCalls = timetableRepository.sumCohortRollCallsForPeriod(
+                course.getDepartment().getId(),
+                course.getStudyYear(),
+                request.dayOfWeek(),
+                request.effectiveFrom(),
+                request.effectiveTo(),
+                excludedId
+        );
+        if (cohortRollCalls + rollCallCount > 6) {
+            throw new ConflictException(
+                    "A department study-year cohort cannot have more than 6 timetable roll calls per day"
+            );
         }
 
         long courseConflicts;
@@ -227,6 +249,7 @@ public class TimetableService {
                 timetable.getDayOfWeek(),
                 timetable.getStartTime(),
                 timetable.getEndTime(),
+                timetable.getRollCallCount(),
                 timetable.getRoom(),
                 timetable.getEffectiveFrom(),
                 timetable.getEffectiveTo(),
@@ -242,5 +265,13 @@ public class TimetableService {
         }
 
         return room.trim();
+    }
+
+    private int resolveRollCallCount(TimetableRequest request) {
+        if (request.rollCallCount() != null) {
+            return request.rollCallCount();
+        }
+        long minutes = Duration.between(request.startTime(), request.endTime()).toMinutes();
+        return (int) Math.max(1, Math.min(6, (minutes + 59) / 60));
     }
 }

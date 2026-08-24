@@ -257,7 +257,25 @@ GET /students/me/timetable?weekStart=2026-08-03
 Authorization: Bearer STUDENT_ACCESS_TOKEN
 ```
 
-The student is derived from the JWT. The response contains only active timetable entries for courses in which that student is enrolled. `weekStart` is optional and is normalized to Monday; when omitted, the current week in `app.time-zone` is returned. Each entry includes its actual date, course, semester, academic year, teacher, start/end time, room, and a `today` flag.
+The student is derived from the JWT. The response contains only active timetable entries for courses in which that student is enrolled. `weekStart` is optional and is normalized to Monday; when omitted, the current week in `app.time-zone` is returned. Each entry includes its actual date, course, semester, academic year, teacher, start/end time, `rollCallCount`, room, and a `today` flag.
+
+Every timetable request can specify how many consecutive roll calls that class represents:
+
+```json
+{
+  "courseId": "COURSE_UUID",
+  "dayOfWeek": "MONDAY",
+  "startTime": "09:00:00",
+  "endTime": "12:00:00",
+  "rollCallCount": 3,
+  "room": "Automation Lab",
+  "effectiveFrom": "2026-08-24",
+  "effectiveTo": "2026-12-31",
+  "active": true
+}
+```
+
+When `rollCallCount` is omitted, Spring derives it by rounding the class duration up to whole hours, limited to 1–6. Therefore, 09:00–12:00 becomes 3 calls automatically. The total recurring timetable calls for one department and study-year cohort cannot exceed 6 on the same weekday while their effective periods overlap. Existing timetable rows migrated to V10 default to one call; update them through `PUT /timetables/{id}` with the correct value or omit the field to recalculate it from the duration.
 
 ## Attendance sessions
 
@@ -279,9 +297,31 @@ SCHEDULED -> CANCELLED
 
 Only a `SCHEDULED` session can be edited or deleted.
 
+### Automatic timetable sessions
+
+By default, Spring checks attendance lifecycle state every 30 seconds in `APP_TIME_ZONE` (`Asia/Yangon` by default):
+
+1. It creates today's `SCHEDULED` attendance session from every active/effective timetable entry.
+2. At the timetable start time it changes the session to `ACTIVE` and publishes the student email reminder.
+3. At the timetable end time it changes the session to `CLOSED`.
+4. Manually created attendance sessions are also started and closed when their own timestamps are reached.
+
+The generated response includes `timetableEntryId`, allowing the frontend to distinguish automatically generated sessions. A restart during class catches up and starts the existing/generated session. A restart after a class has already ended closes a session that was generated earlier, but it does not create a new retroactive session for an already-ended timetable.
+
+Configuration:
+
+```bash
+ATTENDANCE_AUTOMATION_ENABLED=true
+ATTENDANCE_AUTOMATION_INTERVAL=30s
+ATTENDANCE_AUTOMATION_INITIAL_DELAY=10s
+APP_TIME_ZONE=Asia/Yangon
+```
+
+Keep the scheduler enabled on only one Spring instance. The unique `(timetable_entry_id, session_date)` database constraint prevents duplicate generated sessions, but a single scheduler owner is the intended deployment model.
+
 ### Student email reminder when attendance starts
 
-When mail notifications are enabled, `POST /attendance-sessions/{id}/start` sends an individual reminder to every enabled student enrolled in the course. Messages are dispatched after the session transaction commits and contain a direct link to `/student/scan/{sessionId}`. A mail delivery failure is logged and does not roll back or close the active session.
+When mail notifications are enabled, an automatic start or `POST /attendance-sessions/{id}/start` sends an individual reminder to every enabled student enrolled in the course. Messages are dispatched after the session transaction commits and contain a direct link to `/student/scan/{sessionId}`. A mail delivery failure is logged and does not roll back or close the active session.
 
 Configure any SMTP provider with environment variables:
 
@@ -347,16 +387,17 @@ When FastAPI reports `matched: false`, Spring returns the similarity score but d
 
 ## ESP32-CAM hardware attendance
 
-An ESP32-CAM can identify an enrolled student without a student JWT or student ID:
+An ESP32-CAM can identify an enrolled student without a student JWT, student ID, or hardcoded session UUID:
 
 ```text
-POST /hardware/v1/attendance/identify?sessionId={activeSessionId}
-X-Device-Id: configured device ID
-X-Device-Key: configured device secret
+GET /hardware/v1/attendance/active-session
+POST /hardware/v1/attendance/identify
+X-Device-Id: CLASSROOM-01
+X-Device-Key: device secret
 multipart image: captured JPEG
 ```
 
-Spring authenticates the device, limits AI candidates to face-registered students enrolled in the session's course, calls `POST /faces/identify` on FastAPI, and records attendance. The complete ESP32 sketch, wiring notes, test command, response contract, and FastAPI route template are in [`hardware/README.md`](hardware/README.md).
+Administrators register devices with `POST /hardware-devices` and bind each one to a timetable room, a course, or both. Secrets are BCrypt-hashed. Spring authenticates the device, resolves exactly one currently active matching session, limits AI candidates to face-registered students enrolled in that course, calls `POST /faces/identify` on FastAPI, and records attendance. Zero or multiple matching sessions return `409` without calling AI. The older `?sessionId=...` request remains supported for compatibility. The complete ESP32 sketch, device CRUD contract, wiring notes, test commands, and FastAPI route template are in [`hardware/README.md`](hardware/README.md).
 
 ## Dashboards and reports
 
@@ -365,11 +406,13 @@ Dashboard APIs:
 - `GET /dashboard/admin` — admin
 - `GET /dashboard/teacher` — teacher
 - `GET /dashboard/student?date=YYYY-MM-DD` — authenticated student; `date` defaults to today
+- `GET /students/me/attendance-summary?period=ALL|MONTH|WEEK&date=YYYY-MM-DD` — authenticated student's course-by-course attendance screen
 
 Report APIs:
 
 - `GET /reports/attendance` — admin or teacher
 - `GET /reports/attendance/students` — weekly/monthly percentage list for admin or teacher, optionally filtered by `studyYear`
+- `GET /reports/attendance/students/overall` — teacher's department students, one overall row per student for the selected year
 - `GET /reports/attendance/students/export/pdf` — weekly/monthly student percentage PDF
 - `GET /reports/attendance/students/export/excel` — weekly/monthly student percentage Excel workbook
 - `GET /reports/attendance/export/pdf` — admin or teacher
@@ -402,6 +445,24 @@ Courses and attendance sessions now carry two fields used by the university roll
 `studyYear` belongs to the course request and must match the enrolled student's year. `rollCallCount` belongs to the attendance-session request and is between 1 and 6. The total scheduled roll calls for one department and study-year cohort cannot exceed 6 on the same date. For example, a Monday 09:00–12:00 Industrial Automation session uses `rollCallCount: 3`; one successful face verification records all three consecutive calls as present.
 
 Attendance totals are weighted by `rollCallCount`. Four weekly three-call sessions produce 12 monthly calls, and attendance at three of them produces 9 present calls and `9 / 12 = 75%`. The student dashboard's overall percentage is the arithmetic mean of the percentage for every enrolled course, including a zero percentage for a course that has no eligible calls yet. Thus, a student assigned to 7 courses has the sum of the 7 course percentages divided by 7.
+
+The student attendance screen uses the same dynamic calculation and never assumes a fixed course count:
+
+```bash
+curl "http://localhost:8080/students/me/attendance-summary?period=MONTH&date=2026-08-24" \
+  -H "Authorization: Bearer STUDENT_ACCESS_TOKEN"
+```
+
+The response contains `courseCount`, `averageAttendancePercentage`, weighted present/absent/eligible totals, and one entry for every enrolled course. Seven enrollments use seven as the divisor; six enrollments use six. `ALL` is the default period, and only completed/past non-cancelled sessions are eligible.
+
+The teacher portal's year screen uses the same calculation but returns one paginated row per student:
+
+```bash
+curl "http://localhost:8080/reports/attendance/students/overall?studyYear=5&period=ALL&date=2026-08-24&page=0&size=20" \
+  -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
+```
+
+`studyYear` is required and accepts 1 through 6. `period` accepts `ALL`, `MONTH`, or `WEEK`; `query` optionally searches student number, name, or email. The teacher is automatically restricted to students in the teacher's assigned department. Each row contains the student's actual `courseCount`, overall percentage, and weighted eligible/present/absent totals. A Year-5 student with 7 enrollments is divided by 7, while a Year-4 student with 6 enrollments is divided by 6.
 
 The student PDF and Excel exports use the university register layout: one row per student, one narrow column per roll call, followed by absent, present, and percentage totals. PDF output is landscape and Excel creates one print-ready worksheet per course.
 

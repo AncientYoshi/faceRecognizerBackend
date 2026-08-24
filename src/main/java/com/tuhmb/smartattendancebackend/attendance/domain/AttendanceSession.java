@@ -4,6 +4,7 @@ import com.tuhmb.smartattendancebackend.academic.domain.Course;
 import com.tuhmb.smartattendancebackend.common.domain.BaseEntity;
 import com.tuhmb.smartattendancebackend.common.exception.ConflictException;
 import com.tuhmb.smartattendancebackend.user.domain.Teacher;
+import com.tuhmb.smartattendancebackend.timetable.domain.TimetableEntry;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -28,6 +29,10 @@ public class AttendanceSession extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "timetable_entry_id")
+    private TimetableEntry timetableEntry;
 
     @Column(name = "session_date", nullable = false)
     private LocalDate sessionDate;
@@ -70,6 +75,13 @@ public class AttendanceSession extends BaseEntity {
 
     public void assignIdempotencyKey(UUID idempotencyKey) {
         this.idempotencyKey = idempotencyKey;
+    }
+
+    public void linkTimetableEntry(TimetableEntry timetableEntry) {
+        if (this.timetableEntry != null && !this.timetableEntry.getId().equals(timetableEntry.getId())) {
+            throw new ConflictException("Attendance session is already linked to another timetable entry");
+        }
+        this.timetableEntry = timetableEntry;
     }
 
     public void updateSchedule(LocalDate sessionDate, Instant startTime, Instant endTime) {
@@ -119,6 +131,10 @@ public class AttendanceSession extends BaseEntity {
 
     public Teacher getTeacher() {
         return teacher;
+    }
+
+    public TimetableEntry getTimetableEntry() {
+        return timetableEntry;
     }
 
     public LocalDate getSessionDate() {

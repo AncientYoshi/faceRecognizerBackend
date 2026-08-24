@@ -1,20 +1,57 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include "esp_camera.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 // Update these values before flashing the board.
 const char* WIFI_SSID = "YOUR_WIFI_NAME";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
-// Use the LAN IP of the computer running Spring Boot, never localhost.
-const char* SERVER_HOST = "192.168.1.10";
-const uint16_t SERVER_PORT = 8080;
-const char* SESSION_ID = "YOUR-ACTIVE-ATTENDANCE-SESSION-UUID";
+// Deployed Spring Boot API. HTTPS is required because the device key is secret.
+const char* SERVER_HOST = "smart-attendance-api.duckdns.org";
+const uint16_t SERVER_PORT = 443;
 const char* DEVICE_ID = "CLASSROOM-01";
 const char* DEVICE_KEY = "change-this-device-secret";
+
+// Let's Encrypt ISRG Root X1. This verifies the DuckDNS HTTPS certificate and
+// continues to work when Certbot renews the server's leaf certificate.
+static const char ISRG_ROOT_X1[] PROGMEM = R"CERT(
+-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+)CERT";
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -48,6 +85,8 @@ struct AttendanceResult {
   bool verified = false;
   bool attendanceRecorded = false;
   String rollNumber;
+  String courseCode;
+  int rollCallCount = 0;
   String reason;
 };
 
@@ -140,7 +179,22 @@ bool connectWiFi() {
   return true;
 }
 
-bool readByteWithTimeout(WiFiClient& client, char& value, unsigned long timeoutMs = 5000) {
+bool syncClock() {
+  showMessage("SMART ATTENDANCE", "", "Syncing clock");
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  const time_t minimumValidTime = 1704067200;  // 2024-01-01 UTC
+  for (int attempt = 0; attempt < 30; attempt++) {
+    if (time(nullptr) >= minimumValidTime) {
+      Serial.println("TLS clock synchronized");
+      return true;
+    }
+    delay(500);
+  }
+  showMessage("CLOCK ERROR", "", "NTP unavailable");
+  return false;
+}
+
+bool readByteWithTimeout(Client& client, char& value, unsigned long timeoutMs = 5000) {
   unsigned long started = millis();
   while (!client.available()) {
     if (!client.connected() || millis() - started > timeoutMs) {
@@ -152,7 +206,7 @@ bool readByteWithTimeout(WiFiClient& client, char& value, unsigned long timeoutM
   return true;
 }
 
-String readFixedBody(WiFiClient& client, int contentLength) {
+String readFixedBody(Client& client, int contentLength) {
   String body;
   if (contentLength > 0) {
     body.reserve(contentLength);
@@ -167,7 +221,7 @@ String readFixedBody(WiFiClient& client, int contentLength) {
   return body;
 }
 
-String readChunkedBody(WiFiClient& client) {
+String readChunkedBody(Client& client) {
   String body;
   while (true) {
     String sizeLine = client.readStringUntil('\n');
@@ -199,7 +253,7 @@ String readChunkedBody(WiFiClient& client) {
   return body;
 }
 
-String readUntilClosed(WiFiClient& client) {
+String readUntilClosed(Client& client) {
   String body;
   unsigned long lastDataAt = millis();
   while (client.connected() || client.available()) {
@@ -217,7 +271,8 @@ String readUntilClosed(WiFiClient& client) {
 
 AttendanceResult sendImage(camera_fb_t* frame) {
   AttendanceResult result;
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setCACert(ISRG_ROOT_X1);
   client.setTimeout(10000);
 
   if (!client.connect(SERVER_HOST, SERVER_PORT)) {
@@ -231,10 +286,10 @@ AttendanceResult sendImage(camera_fb_t* frame) {
       "Content-Type: image/jpeg\r\n\r\n";
   const String tail = "\r\n--" + boundary + "--\r\n";
   const size_t contentLength = head.length() + frame->len + tail.length();
-  const String path = "/hardware/v1/attendance/identify?sessionId=" + String(SESSION_ID);
+  const String path = "/hardware/v1/attendance/identify";
 
   client.print("POST " + path + " HTTP/1.1\r\n");
-  client.print("Host: " + String(SERVER_HOST) + ":" + String(SERVER_PORT) + "\r\n");
+  client.print("Host: " + String(SERVER_HOST) + "\r\n");
   client.print("X-Device-Id: " + String(DEVICE_ID) + "\r\n");
   client.print("X-Device-Key: " + String(DEVICE_KEY) + "\r\n");
   client.print("Accept: application/json\r\n");
@@ -286,7 +341,18 @@ AttendanceResult sendImage(camera_fb_t* frame) {
   Serial.println(statusLine);
   Serial.println(body);
   if (statusCode != 200) {
-    result.reason = "HTTP_" + String(statusCode);
+    JsonDocument errorDocument;
+    if (deserializeJson(errorDocument, body) == DeserializationError::Ok) {
+      String message = errorDocument["message"] | "";
+      if (message.startsWith("No active attendance")) {
+        result.reason = "NO ACTIVE SESSION";
+      } else if (message.startsWith("Multiple active")) {
+        result.reason = "DEVICE BINDING ERROR";
+      }
+    }
+    if (result.reason.length() == 0) {
+      result.reason = "HTTP_" + String(statusCode);
+    }
     return result;
   }
 
@@ -301,6 +367,8 @@ AttendanceResult sendImage(camera_fb_t* frame) {
   result.verified = document["verified"] | false;
   result.attendanceRecorded = document["attendanceRecorded"] | false;
   result.rollNumber = document["rollNumber"] | "";
+  result.courseCode = document["courseCode"] | "";
+  result.rollCallCount = document["rollCallCount"] | 0;
   result.reason = document["reason"] | "";
   return result;
 }
@@ -326,10 +394,14 @@ void checkAttendance() {
     return;
   }
   if (result.verified) {
+    String footer = result.attendanceRecorded ? "VERIFIED" : "ALREADY VERIFIED";
+    if (result.attendanceRecorded && result.rollCallCount > 1) {
+      footer += " x" + String(result.rollCallCount);
+    }
     showMessage(
         "ATTENDANCE",
         result.rollNumber,
-        result.attendanceRecorded ? "VERIFIED" : "ALREADY VERIFIED"
+        footer
     );
     successBeep();
     delay(5000);
@@ -363,14 +435,22 @@ void setup() {
       delay(1000);
     }
   }
-  connectWiFi();
+  if (connectWiFi()) {
+    syncClock();
+  }
   delay(1000);
 }
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
+    if (connectWiFi()) {
+      syncClock();
+    }
     delay(1000);
+    return;
+  }
+  if (time(nullptr) < 1704067200 && !syncClock()) {
+    delay(3000);
     return;
   }
   checkAttendance();

@@ -15,6 +15,7 @@ import com.tuhmb.smartattendancebackend.face.client.IdentifyFaceAiResponse;
 import com.tuhmb.smartattendancebackend.face.exception.AiServiceException;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
 import com.tuhmb.smartattendancebackend.face.service.ImageUploadValidator;
+import com.tuhmb.smartattendancebackend.hardware.api.HardwareActiveSessionResponse;
 import com.tuhmb.smartattendancebackend.hardware.api.HardwareAttendanceResponse;
 import com.tuhmb.smartattendancebackend.user.domain.Student;
 import com.tuhmb.smartattendancebackend.user.repository.StudentRepository;
@@ -75,26 +76,26 @@ public class HardwareAttendanceService {
             UUID sessionId,
             MultipartFile image
     ) {
-        deviceAuthenticationService.authenticate(deviceId, deviceKey);
+        AuthenticatedHardwareDevice device = deviceAuthenticationService.authenticate(deviceId, deviceKey);
         imageValidator.validate(image);
 
         IdentificationContext context = transactionTemplate.execute(
-                status -> prepareIdentification(sessionId, Instant.now())
+                status -> prepareIdentification(device, sessionId, Instant.now())
         );
         if (context == null) {
             throw new IllegalStateException("Hardware identification context could not be created");
         }
         if (context.candidateStudentIds().isEmpty()) {
-            return HardwareAttendanceResponse.failed("NO_REGISTERED_STUDENTS", 0);
+            return failed(context, "NO_REGISTERED_STUDENTS", 0);
         }
 
         IdentifyFaceAiResponse face = faceAiClient.identify(context.candidateStudentIds(), image);
         validateAiResponse(face, context.candidateStudentIds());
         if (!face.matched()) {
-            return HardwareAttendanceResponse.failed(reasonOr(face.reason(), "FACE_NOT_RECOGNIZED"), face.similarity());
+            return failed(context, reasonOr(face.reason(), "FACE_NOT_RECOGNIZED"), face.similarity());
         }
         if (!face.livenessPassed()) {
-            return HardwareAttendanceResponse.failed("LIVENESS_FAILED", face.similarity());
+            return failed(context, "LIVENESS_FAILED", face.similarity());
         }
 
         try {
@@ -125,13 +126,89 @@ public class HardwareAttendanceService {
         }
     }
 
-    private IdentificationContext prepareIdentification(UUID sessionId, Instant now) {
-        AttendanceSession session = findSession(sessionId);
+    public HardwareActiveSessionResponse activeSession(String deviceId, String deviceKey) {
+        AuthenticatedHardwareDevice device = deviceAuthenticationService.authenticate(deviceId, deviceKey);
+        HardwareActiveSessionResponse response = transactionTemplate.execute(
+                status -> HardwareActiveSessionResponse.from(resolveActiveSession(device, Instant.now()))
+        );
+        if (response == null) {
+            throw new IllegalStateException("Active hardware attendance session could not be resolved");
+        }
+        return response;
+    }
+
+    private IdentificationContext prepareIdentification(
+            AuthenticatedHardwareDevice device,
+            UUID requestedSessionId,
+            Instant now
+    ) {
+        AttendanceSession session = requestedSessionId == null
+                ? resolveActiveSession(device, now)
+                : findSession(requestedSessionId);
+        requireDeviceBindingMatches(device, session);
         validateSession(session, now);
         List<UUID> candidates = enrollmentRepository.findFaceRegisteredStudentIdsByCourseId(
                 session.getCourse().getId()
         );
-        return new IdentificationContext(session.getId(), List.copyOf(candidates));
+        return new IdentificationContext(
+                session.getId(),
+                session.getCourse().getCode(),
+                session.getRollCallCount(),
+                List.copyOf(candidates)
+        );
+    }
+
+    private AttendanceSession resolveActiveSession(AuthenticatedHardwareDevice device, Instant now) {
+        if (!device.databaseManaged() || !device.hasBinding()) {
+            throw new ConflictException(
+                    "Hardware device must be registered with a room or course for automatic session discovery"
+            );
+        }
+
+        List<AttendanceSession> matches;
+        if (device.courseId() != null && device.room() != null) {
+            matches = sessionRepository.findActiveForCourseAndRoom(
+                    device.courseId(), device.room(), AttendanceSessionStatus.ACTIVE, now
+            );
+        } else if (device.courseId() != null) {
+            matches = sessionRepository.findActiveForCourse(
+                    device.courseId(), AttendanceSessionStatus.ACTIVE, now
+            );
+        } else {
+            matches = sessionRepository.findActiveForRoom(
+                    device.room(), AttendanceSessionStatus.ACTIVE, now
+            );
+        }
+
+        if (matches.isEmpty()) {
+            throw new ConflictException("No active attendance session matches this hardware device");
+        }
+        if (matches.size() > 1) {
+            throw new ConflictException(
+                    "Multiple active attendance sessions match this hardware device; narrow its room/course binding"
+            );
+        }
+        return matches.getFirst();
+    }
+
+    private void requireDeviceBindingMatches(
+            AuthenticatedHardwareDevice device,
+            AttendanceSession session
+    ) {
+        if (!device.databaseManaged()) {
+            return;
+        }
+        if (device.courseId() != null && !device.courseId().equals(session.getCourse().getId())) {
+            throw new ConflictException("Attendance session does not match the hardware device course binding");
+        }
+        if (device.room() != null) {
+            String sessionRoom = session.getTimetableEntry() == null
+                    ? null
+                    : session.getTimetableEntry().getRoom();
+            if (sessionRoom == null || !device.room().trim().equalsIgnoreCase(sessionRoom.trim())) {
+                throw new ConflictException("Attendance session does not match the hardware device room binding");
+            }
+        }
     }
 
     private HardwareAttendanceResponse recordOrReturnExisting(
@@ -199,6 +276,9 @@ public class HardwareAttendanceService {
         return new HardwareAttendanceResponse(
                 true,
                 reason,
+                attendance.getSession().getId(),
+                attendance.getCourse().getCode(),
+                attendance.getSession().getRollCallCount(),
                 student.getId(),
                 student.getStudentNumber(),
                 recorded,
@@ -247,6 +327,26 @@ public class HardwareAttendanceService {
         return reason == null || reason.isBlank() ? fallback : reason;
     }
 
-    private record IdentificationContext(UUID sessionId, List<UUID> candidateStudentIds) {
+    private HardwareAttendanceResponse failed(IdentificationContext context, String reason, double similarity) {
+        return new HardwareAttendanceResponse(
+                false,
+                reason,
+                context.sessionId(),
+                context.courseCode(),
+                context.rollCallCount(),
+                null,
+                null,
+                false,
+                null,
+                similarity
+        );
+    }
+
+    private record IdentificationContext(
+            UUID sessionId,
+            String courseCode,
+            int rollCallCount,
+            List<UUID> candidateStudentIds
+    ) {
     }
 }

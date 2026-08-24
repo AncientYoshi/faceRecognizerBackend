@@ -25,6 +25,15 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     @EntityGraph(attributePaths = {"course"})
     List<Enrollment> findAllByStudentIdOrderByCourseCode(UUID studentId);
 
+    @Query("""
+            select enrollment
+            from Enrollment enrollment
+            join fetch enrollment.course course
+            where enrollment.student.id in :studentIds
+            order by enrollment.student.id, course.code
+            """)
+    List<Enrollment> findAllByStudentIdsWithCourse(@Param("studentIds") List<UUID> studentIds);
+
     @EntityGraph(attributePaths = {"student.user"})
     @Query("""
             select enrollment

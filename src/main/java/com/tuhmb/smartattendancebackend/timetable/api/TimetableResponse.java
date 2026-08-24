@@ -14,6 +14,7 @@ public record TimetableResponse(
         DayOfWeek dayOfWeek,
         LocalTime startTime,
         LocalTime endTime,
+        int rollCallCount,
         String room,
         LocalDate effectiveFrom,
         LocalDate effectiveTo,
