@@ -75,6 +75,10 @@ app:
   hardware:
     device-id: ${HARDWARE_DEVICE_ID:CLASSROOM-01}
     device-key: ${HARDWARE_DEVICE_KEY:change-this-device-secret}
+  photo-upload-test:
+    enabled: ${PHOTO_UPLOAD_TEST_ENABLED:false}
+    directory: ${PHOTO_UPLOAD_TEST_DIRECTORY:/tmp/smart-attendance-upload-test}
+    max-bytes: ${PHOTO_UPLOAD_TEST_MAX_BYTES:5242880}
   attendance:
     automation:
       enabled: ${ATTENDANCE_AUTOMATION_ENABLED:true}

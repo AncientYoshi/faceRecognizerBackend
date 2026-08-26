@@ -574,6 +574,20 @@
           }
         },
         {
+          "name": "Public ESP32 Raw JPEG Upload Test",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "image/jpeg", "type": "text" }],
+            "body": {
+              "mode": "file",
+              "file": { "src": "{{faceImagePath}}" }
+            },
+            "url": "{{baseUrl}}/upload",
+            "description": "Temporary unauthenticated raw-JPEG connectivity test. Requires PHOTO_UPLOAD_TEST_ENABLED=true. Disable it after testing."
+          }
+        },
+        {
           "name": "Verify Attendance - Save Attendance ID",
           "event": [{
             "listen": "test",
@@ -720,6 +734,16 @@
             "header": [],
             "url": "{{baseUrl}}/reports/attendance/students/overall?studyYear=5&period=ALL&date={{today}}&query=&page=0&size=20",
             "description": "One row per Year-5 student in the authenticated teacher's department. Overall attendance is the arithmetic mean across each student's actual enrolled course count. Change studyYear to 1-6 and period to ALL, MONTH, or WEEK."
+          }
+        },
+        {
+          "name": "Export Teacher Year 5 Overall Attendance Excel",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+            "url": "{{baseUrl}}/reports/attendance/students/overall/export/excel?studyYear=5&period=ALL&date={{today}}&query=",
+            "description": "Downloads the complete naturally ordered department cohort as a university-style matrix with one percentage column per course and a formula-driven overall total."
           }
         },
         {

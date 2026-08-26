@@ -59,6 +59,18 @@ public class AttendanceReportController {
         return cohortAttendanceService.report(studyYear, period, date, query, page, size, jwt);
     }
 
+    @GetMapping("/students/overall/export/excel")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<byte[]> studentOverallAttendanceExcel(
+            @RequestParam @Min(1) @Max(6) Integer studyYear,
+            @RequestParam(defaultValue = "ALL") StudentAttendancePeriod period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) String query,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return download(cohortAttendanceService.exportExcel(studyYear, period, date, query, jwt));
+    }
+
     @GetMapping("/students")
     public StudentAttendancePercentageReportResponse studentPercentages(
             @RequestParam(defaultValue = "WEEK") AttendanceReportPeriod period,

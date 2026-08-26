@@ -399,6 +399,35 @@ multipart image: captured JPEG
 
 Administrators register devices with `POST /hardware-devices` and bind each one to a timetable room, a course, or both. Secrets are BCrypt-hashed. Spring authenticates the device, resolves exactly one currently active matching session, limits AI candidates to face-registered students enrolled in that course, calls `POST /faces/identify` on FastAPI, and records attendance. Zero or multiple matching sessions return `409` without calling AI. The older `?sessionId=...` request remains supported for compatibility. The complete ESP32 sketch, device CRUD contract, wiring notes, test commands, and FastAPI route template are in [`hardware/README.md`](hardware/README.md).
 
+### Temporary public ESP32 photo upload test
+
+For camera transport testing only, Spring can expose an unauthenticated raw-JPEG endpoint:
+
+```http
+POST /upload
+Content-Type: image/jpeg
+
+<raw JPEG bytes>
+```
+
+It is disabled by default. Enable it temporarily with:
+
+```bash
+PHOTO_UPLOAD_TEST_ENABLED=true
+PHOTO_UPLOAD_TEST_DIRECTORY=/opt/smart-attendance-backend/upload-test
+PHOTO_UPLOAD_TEST_MAX_BYTES=5242880
+```
+
+The endpoint validates the JPEG signature, calculates SHA-256, and atomically overwrites one `captured.jpg`; it does not create unbounded files. Test the deployed endpoint without authentication:
+
+```bash
+curl -X POST 'https://smart-attendance-api.duckdns.org/upload' \
+  -H 'Content-Type: image/jpeg' \
+  --data-binary @/absolute/path/captured.jpg
+```
+
+After the ESP32 transport test, set `PHOTO_UPLOAD_TEST_ENABLED=false` and restart Spring. Do not leave this public endpoint enabled in normal operation; production attendance uses authenticated device headers and `POST /hardware/v1/attendance/identify` instead.
+
 ## Dashboards and reports
 
 Dashboard APIs:
@@ -413,12 +442,13 @@ Report APIs:
 - `GET /reports/attendance` — admin or teacher
 - `GET /reports/attendance/students` — weekly/monthly percentage list for admin or teacher, optionally filtered by `studyYear`
 - `GET /reports/attendance/students/overall` — teacher's department students, one overall row per student for the selected year
+- `GET /reports/attendance/students/overall/export/excel` — complete teacher cohort matrix with one percentage column per course
 - `GET /reports/attendance/students/export/pdf` — weekly/monthly student percentage PDF
 - `GET /reports/attendance/students/export/excel` — weekly/monthly student percentage Excel workbook
 - `GET /reports/attendance/export/pdf` — admin or teacher
 - `GET /reports/attendance/export/excel` — admin or teacher
 
-All report endpoints accept optional `courseId`, `studentId`, `departmentId`, `from`, and `to` filters. Dates use `YYYY-MM-DD`. Use `month=YYYY-MM` instead of `from` and `to` for a monthly report. The JSON endpoint additionally accepts `page` and `size`.
+The base `/reports/attendance` JSON, PDF, and Excel endpoints accept optional `courseId`, `studentId`, `departmentId`, `from`, and `to` filters. Dates use `YYYY-MM-DD`. Use `month=YYYY-MM` instead of `from` and `to` for a monthly report. The JSON endpoint additionally accepts `page` and `size`.
 
 Examples:
 
@@ -460,9 +490,14 @@ The teacher portal's year screen uses the same calculation but returns one pagin
 ```bash
 curl "http://localhost:8080/reports/attendance/students/overall?studyYear=5&period=ALL&date=2026-08-24&page=0&size=20" \
   -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
+
+curl -OJ "http://localhost:8080/reports/attendance/students/overall/export/excel?studyYear=5&period=ALL&date=2026-08-24" \
+  -H "Authorization: Bearer TEACHER_ACCESS_TOKEN"
 ```
 
 `studyYear` is required and accepts 1 through 6. `period` accepts `ALL`, `MONTH`, or `WEEK`; `query` optionally searches student number, name, or email. The teacher is automatically restricted to students in the teacher's assigned department. Each row contains the student's actual `courseCount`, overall percentage, and weighted eligible/present/absent totals. A Year-5 student with 7 enrollments is divided by 7, while a Year-4 student with 6 enrollments is divided by 6.
+
+The overall Excel export applies the same filters without pagination. It creates a print-ready cohort sheet with natural roll-number order, one percentage column per cohort course, blank cells where a student is not enrolled, a formula-driven overall total, a remark column, and prepared/approved signature areas.
 
 The student PDF and Excel exports use the university register layout: one row per student, one narrow column per roll call, followed by absent, present, and percentage totals. PDF output is landscape and Excel creates one print-ready worksheet per course.
 

@@ -10,6 +10,7 @@ import com.tuhmb.smartattendancebackend.attendance.domain.Attendance;
 import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSession;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceRepository;
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
+import com.tuhmb.smartattendancebackend.audit.domain.AuditAction;
 import com.tuhmb.smartattendancebackend.audit.repository.AuditLogRepository;
 import com.tuhmb.smartattendancebackend.auth.repository.RefreshTokenRepository;
 import com.tuhmb.smartattendancebackend.face.repository.FaceRegistrationRepository;
@@ -22,6 +23,8 @@ import com.tuhmb.smartattendancebackend.user.repository.RoleRepository;
 import com.tuhmb.smartattendancebackend.user.repository.StudentRepository;
 import com.tuhmb.smartattendancebackend.user.repository.TeacherRepository;
 import com.tuhmb.smartattendancebackend.user.repository.UserRepository;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,16 +37,25 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -124,6 +136,11 @@ class StudentDashboardIntegrationTest {
 
         String studentToken = login("dashboard.student@example.com", "student-password");
         mockMvc.perform(get("/reports/attendance/students/overall")
+                        .param("studyYear", "5")
+                        .header("Authorization", bearer(studentToken)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/reports/attendance/students/overall/export/excel")
                         .param("studyYear", "5")
                         .header("Authorization", bearer(studentToken)))
                 .andExpect(status().isForbidden());
@@ -212,6 +229,166 @@ class StudentDashboardIntegrationTest {
     }
 
     @Test
+    void teacherOverallAttendanceOrdersStudentNumbersNaturallyAcrossPages() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> createMixedFormatCohort());
+
+        String teacherToken = login("dashboard.teacher@example.com", "teacher-password");
+        mockMvc.perform(get("/reports/attendance/students/overall")
+                        .param("studyYear", "5")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .param("size", "20")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.students.totalElements").value(26))
+                .andExpect(jsonPath("$.students.content[*].studentNumber").value(contains(
+                        "V MC-1",
+                        "VMC-2",
+                        "VMC-3",
+                        "VMc-4",
+                        "VMc-5",
+                        "VMc-6",
+                        "VMC-7",
+                        "VMC-8",
+                        "V-MC-9",
+                        "V-MC-10",
+                        "VMC-11",
+                        "V-MC-12",
+                        "V-MC-13",
+                        "VMC-14",
+                        "VMC-15",
+                        "VMC-16",
+                        "VMC-17",
+                        "VMC-18",
+                        "VMC-19",
+                        "VMC-20"
+                )));
+
+        mockMvc.perform(get("/reports/attendance/students/overall")
+                        .param("studyYear", "5")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .param("page", "1")
+                        .param("size", "5")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.students.totalElements").value(26))
+                .andExpect(jsonPath("$.students.totalPages").value(6))
+                .andExpect(jsonPath("$.students.content[*].studentNumber").value(contains(
+                        "VMc-6",
+                        "VMC-7",
+                        "VMC-8",
+                        "V-MC-9",
+                        "V-MC-10"
+                )));
+    }
+
+    @Test
+    void teacherCanExportOverallAttendanceInCohortMatrixFormat() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> createMixedFormatCohort());
+
+        String teacherToken = login("dashboard.teacher@example.com", "teacher-password");
+        MvcResult result = mockMvc.perform(get("/reports/attendance/students/overall/export/excel")
+                        .param("studyYear", "5")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Content-Disposition",
+                        containsString("student-overall-attendance-year-5-all-")
+                ))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(content().contentType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ))
+                .andReturn();
+
+        try (var workbook = WorkbookFactory.create(
+                new ByteArrayInputStream(result.getResponse().getContentAsByteArray())
+        )) {
+            var sheet = workbook.getSheet("Overall");
+            assertNotNull(sheet);
+            assertEquals(
+                    "DASH-101 Dashboard Calculations",
+                    sheet.getRow(3).getCell(3).getStringCellValue()
+            );
+            List<String> exportedNumbers = java.util.stream.IntStream.range(4, 30)
+                    .mapToObj(row -> sheet.getRow(row).getCell(1).getStringCellValue())
+                    .toList();
+            assertEquals(
+                    List.of(
+                            "V MC-1",
+                            "VMC-2",
+                            "VMC-3",
+                            "VMc-4",
+                            "VMc-5",
+                            "VMc-6",
+                            "VMC-7",
+                            "VMC-8",
+                            "V-MC-9",
+                            "V-MC-10",
+                            "VMC-11",
+                            "V-MC-12",
+                            "V-MC-13",
+                            "VMC-14",
+                            "VMC-15",
+                            "VMC-16",
+                            "VMC-17",
+                            "VMC-18",
+                            "VMC-19",
+                            "VMC-20",
+                            "VMC-21",
+                            "VMC-22",
+                            "VMC-23",
+                            "VMC-24",
+                            "VMC-25",
+                            "VMC-123456789012345678901234567890"
+                    ),
+                    exportedNumbers
+            );
+            assertEquals(
+                    66.67d,
+                    sheet.getRow(4).getCell(3).getNumericCellValue(),
+                    0.001d
+            );
+            assertEquals(
+                    66.67d,
+                    sheet.getRow(4).getCell(4).getNumericCellValue(),
+                    0.001d
+            );
+            assertEquals(CellType.BLANK, sheet.getRow(5).getCell(3).getCellType());
+            assertEquals(0d, sheet.getRow(5).getCell(4).getNumericCellValue());
+        }
+
+        MvcResult filteredResult = mockMvc.perform(get("/reports/attendance/students/overall/export/excel")
+                        .param("studyYear", "5")
+                        .param("period", "ALL")
+                        .param("date", today.toString())
+                        .param("query", "Student 25")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+        try (var workbook = WorkbookFactory.create(
+                new ByteArrayInputStream(filteredResult.getResponse().getContentAsByteArray())
+        )) {
+            var sheet = workbook.getSheet("Overall");
+            assertEquals(
+                    "DASH-101 Dashboard Calculations",
+                    sheet.getRow(3).getCell(3).getStringCellValue()
+            );
+            assertEquals("VMC-25", sheet.getRow(4).getCell(1).getStringCellValue());
+            assertEquals(CellType.BLANK, sheet.getRow(4).getCell(3).getCellType());
+            assertEquals(0d, sheet.getRow(4).getCell(4).getNumericCellValue());
+        }
+
+        assertTrue(auditLogRepository.findAll().stream().anyMatch(log ->
+                log.getAction() == AuditAction.REPORT_DOWNLOADED
+                        && "TeacherCohortAttendanceReport".equals(log.getEntityType())
+        ));
+    }
+
+    @Test
     void attendanceAverageUsesSixAsDivisorWhenSixCoursesAreAssigned() throws Exception {
         transactionTemplate.executeWithoutResult(status -> addFullyAttendedCourses(6));
 
@@ -226,6 +403,55 @@ class StudentDashboardIntegrationTest {
                 .andExpect(jsonPath("$.totalEligibleRollCalls").value(8))
                 .andExpect(jsonPath("$.totalPresentRollCalls").value(7))
                 .andExpect(jsonPath("$.courses.length()").value(6));
+    }
+
+    private void createMixedFormatCohort() {
+        List<String> studentNumbers = List.of(
+                "V MC-1",
+                "VMC-2",
+                "VMC-3",
+                "VMc-4",
+                "VMc-5",
+                "VMc-6",
+                "VMC-7",
+                "VMC-8",
+                "V-MC-9",
+                "V-MC-10",
+                "VMC-11",
+                "V-MC-12",
+                "V-MC-13",
+                "VMC-14",
+                "VMC-15",
+                "VMC-16",
+                "VMC-17",
+                "VMC-18",
+                "VMC-19",
+                "VMC-20",
+                "VMC-21",
+                "VMC-22",
+                "VMC-23",
+                "VMC-24",
+                "VMC-25",
+                "VMC-123456789012345678901234567890"
+        );
+        Role studentRole = roleRepository.findByName(RoleName.STUDENT).orElseThrow();
+        Department department = departmentRepository.findByCodeIgnoreCase("DASH").orElseThrow();
+        Student firstStudent = studentRepository.findByStudentNumberIgnoreCase("DASH-S-001").orElseThrow();
+        firstStudent.updateStudentNumber(studentNumbers.getFirst());
+
+        for (int index = studentNumbers.size() - 1; index >= 1; index--) {
+            int sequence = index + 1;
+            AppUser user = userRepository.save(new AppUser(
+                    "cohort.student.%d@example.com".formatted(sequence),
+                    "unused-password-hash",
+                    "Cohort",
+                    "Student %d".formatted(sequence),
+                    Set.of(studentRole)
+            ));
+            Student student = new Student(user, studentNumbers.get(index), 5);
+            student.assignDepartment(department);
+            studentRepository.save(student);
+        }
     }
 
     private void addFullyAttendedCourses(int finalCourseNumber) {

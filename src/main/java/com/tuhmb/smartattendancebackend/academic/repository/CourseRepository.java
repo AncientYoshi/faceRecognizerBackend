@@ -17,4 +17,6 @@ public interface CourseRepository extends JpaRepository<Course, UUID>, JpaSpecif
     long countByTeacherId(UUID teacherId);
 
     List<Course> findByTeacherIdOrderByCode(UUID teacherId);
+
+    List<Course> findByDepartmentIdAndStudyYearOrderByCode(UUID departmentId, Integer studyYear);
 }

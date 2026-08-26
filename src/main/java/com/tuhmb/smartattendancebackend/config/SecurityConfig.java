@@ -66,6 +66,7 @@ public class SecurityConfig {
                                 "/auth/refresh",
                                 "/auth/logout",
                                 "/public/departments",
+                                "/upload",
                                 "/hardware/v1/**",
                                 "/actuator/health",
                                 "/v3/api-docs/**",
