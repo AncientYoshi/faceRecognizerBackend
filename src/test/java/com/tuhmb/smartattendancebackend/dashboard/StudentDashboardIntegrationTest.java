@@ -39,6 +39,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -284,6 +286,91 @@ class StudentDashboardIntegrationTest {
     }
 
     @Test
+    void courseAttendanceOrdersStudentNumbersNaturallyInJsonAndExcel() throws Exception {
+        transactionTemplate.executeWithoutResult(status -> {
+            createMixedFormatCohort();
+            enrollMixedFormatCohortInDashboardCourse();
+        });
+
+        UUID courseId = courseRepository.findByCodeIgnoreCase("DASH-101").orElseThrow().getId();
+        String teacherToken = login("dashboard.teacher@example.com", "teacher-password");
+        mockMvc.perform(get("/reports/attendance/students")
+                        .param("period", "MONTH")
+                        .param("date", today.toString())
+                        .param("courseId", courseId.toString())
+                        .param("studyYear", "5")
+                        .param("size", "20")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.students.totalElements").value(26))
+                .andExpect(jsonPath("$.students.content[*].studentNumber").value(contains(
+                        "V MC-1",
+                        "VMC-2",
+                        "VMC-3",
+                        "VMc-4",
+                        "VMc-5",
+                        "VMc-6",
+                        "VMC-7",
+                        "VMC-8",
+                        "V-MC-9",
+                        "V-MC-10",
+                        "VMC-11",
+                        "V-MC-12",
+                        "V-MC-13",
+                        "VMC-14",
+                        "VMC-15",
+                        "VMC-16",
+                        "VMC-17",
+                        "VMC-18",
+                        "VMC-19",
+                        "VMC-20"
+                )));
+
+        mockMvc.perform(get("/reports/attendance/students")
+                        .param("period", "MONTH")
+                        .param("date", today.toString())
+                        .param("courseId", courseId.toString())
+                        .param("studyYear", "5")
+                        .param("page", "1")
+                        .param("size", "5")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.students.content[*].studentNumber").value(contains(
+                        "VMc-6",
+                        "VMC-7",
+                        "VMC-8",
+                        "V-MC-9",
+                        "V-MC-10"
+                )));
+
+        MvcResult result = mockMvc.perform(get("/reports/attendance/students/export/excel")
+                        .param("period", "MONTH")
+                        .param("date", today.toString())
+                        .param("courseId", courseId.toString())
+                        .param("studyYear", "5")
+                        .header("Authorization", bearer(teacherToken)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ))
+                .andReturn();
+
+        byte[] excel = result.getResponse().getContentAsByteArray();
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(excel))) {
+            var sheet = workbook.getSheet("DASH-101");
+            assertNotNull(sheet);
+            List<String> exportedNumbers = java.util.stream.IntStream.range(5, 31)
+                    .mapToObj(row -> sheet.getRow(row).getCell(1).getStringCellValue())
+                    .toList();
+            assertEquals(mixedFormatStudentNumbers(), exportedNumbers);
+        }
+
+        Path directory = Path.of("target", "report-verification");
+        Files.createDirectories(directory);
+        Files.write(directory.resolve("course-attendance-natural-order.xlsx"), excel);
+    }
+
+    @Test
     void teacherCanExportOverallAttendanceInCohortMatrixFormat() throws Exception {
         transactionTemplate.executeWithoutResult(status -> createMixedFormatCohort());
 
@@ -316,37 +403,7 @@ class StudentDashboardIntegrationTest {
             List<String> exportedNumbers = java.util.stream.IntStream.range(4, 30)
                     .mapToObj(row -> sheet.getRow(row).getCell(1).getStringCellValue())
                     .toList();
-            assertEquals(
-                    List.of(
-                            "V MC-1",
-                            "VMC-2",
-                            "VMC-3",
-                            "VMc-4",
-                            "VMc-5",
-                            "VMc-6",
-                            "VMC-7",
-                            "VMC-8",
-                            "V-MC-9",
-                            "V-MC-10",
-                            "VMC-11",
-                            "V-MC-12",
-                            "V-MC-13",
-                            "VMC-14",
-                            "VMC-15",
-                            "VMC-16",
-                            "VMC-17",
-                            "VMC-18",
-                            "VMC-19",
-                            "VMC-20",
-                            "VMC-21",
-                            "VMC-22",
-                            "VMC-23",
-                            "VMC-24",
-                            "VMC-25",
-                            "VMC-123456789012345678901234567890"
-                    ),
-                    exportedNumbers
-            );
+            assertEquals(mixedFormatStudentNumbers(), exportedNumbers);
             assertEquals(
                     66.67d,
                     sheet.getRow(4).getCell(3).getNumericCellValue(),
@@ -406,7 +463,29 @@ class StudentDashboardIntegrationTest {
     }
 
     private void createMixedFormatCohort() {
-        List<String> studentNumbers = List.of(
+        List<String> studentNumbers = mixedFormatStudentNumbers();
+        Role studentRole = roleRepository.findByName(RoleName.STUDENT).orElseThrow();
+        Department department = departmentRepository.findByCodeIgnoreCase("DASH").orElseThrow();
+        Student firstStudent = studentRepository.findByStudentNumberIgnoreCase("DASH-S-001").orElseThrow();
+        firstStudent.updateStudentNumber(studentNumbers.getFirst());
+
+        for (int index = studentNumbers.size() - 1; index >= 1; index--) {
+            int sequence = index + 1;
+            AppUser user = userRepository.save(new AppUser(
+                    "cohort.student.%d@example.com".formatted(sequence),
+                    "unused-password-hash",
+                    "Cohort",
+                    "Student %d".formatted(sequence),
+                    Set.of(studentRole)
+            ));
+            Student student = new Student(user, studentNumbers.get(index), 5);
+            student.assignDepartment(department);
+            studentRepository.save(student);
+        }
+    }
+
+    private List<String> mixedFormatStudentNumbers() {
+        return List.of(
                 "V MC-1",
                 "VMC-2",
                 "VMC-3",
@@ -434,23 +513,14 @@ class StudentDashboardIntegrationTest {
                 "VMC-25",
                 "VMC-123456789012345678901234567890"
         );
-        Role studentRole = roleRepository.findByName(RoleName.STUDENT).orElseThrow();
-        Department department = departmentRepository.findByCodeIgnoreCase("DASH").orElseThrow();
-        Student firstStudent = studentRepository.findByStudentNumberIgnoreCase("DASH-S-001").orElseThrow();
-        firstStudent.updateStudentNumber(studentNumbers.getFirst());
+    }
 
-        for (int index = studentNumbers.size() - 1; index >= 1; index--) {
-            int sequence = index + 1;
-            AppUser user = userRepository.save(new AppUser(
-                    "cohort.student.%d@example.com".formatted(sequence),
-                    "unused-password-hash",
-                    "Cohort",
-                    "Student %d".formatted(sequence),
-                    Set.of(studentRole)
-            ));
-            Student student = new Student(user, studentNumbers.get(index), 5);
-            student.assignDepartment(department);
-            studentRepository.save(student);
+    private void enrollMixedFormatCohortInDashboardCourse() {
+        Course course = courseRepository.findByCodeIgnoreCase("DASH-101").orElseThrow();
+        for (Student student : studentRepository.findAll()) {
+            if (!enrollmentRepository.existsByStudentIdAndCourseId(student.getId(), course.getId())) {
+                enrollmentRepository.save(new Enrollment(student, course));
+            }
         }
     }
 

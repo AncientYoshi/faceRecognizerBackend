@@ -16,7 +16,6 @@ import com.tuhmb.smartattendancebackend.report.api.StudentAttendancePercentageRe
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -89,7 +88,7 @@ public class StudentAttendancePercentageService {
                 teacherUserId,
                 studyYear,
                 query,
-                PageRequest.of(page, size, reportSort())
+                PageRequest.of(page, size)
         );
         List<StudentAttendancePercentageResponse> rows = rows(enrollments.getContent(), from, to);
         Page<StudentAttendancePercentageResponse> responsePage =
@@ -171,7 +170,7 @@ public class StudentAttendancePercentageService {
                 teacherUserId,
                 studyYear,
                 query,
-                PageRequest.of(0, MAX_EXPORT_ROWS, reportSort())
+                PageRequest.of(0, MAX_EXPORT_ROWS)
         );
         if (enrollments.getTotalElements() > MAX_EXPORT_ROWS) {
             throw new IllegalArgumentException(
@@ -292,10 +291,6 @@ public class StudentAttendancePercentageService {
                 normalizeQuery(query),
                 pageRequest
         );
-    }
-
-    private Sort reportSort() {
-        return Sort.by("course.code").ascending().and(Sort.by("student.studentNumber").ascending());
     }
 
     private List<StudentAttendancePercentageResponse> rows(

@@ -148,7 +148,12 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(properties.allowedOrigins());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                "Idempotency-Key"
+        ));
         configuration.setExposedHeaders(List.of("Location", "Content-Disposition"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);

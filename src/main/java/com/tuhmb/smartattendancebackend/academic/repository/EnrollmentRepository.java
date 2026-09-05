@@ -76,20 +76,76 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, UUID> {
     );
 
     @EntityGraph(attributePaths = {"student.user", "course"})
-    @Query("""
-            select enrollment
-            from Enrollment enrollment
-            where (:courseId is null or enrollment.course.id = :courseId)
-              and (:teacherUserId is null or enrollment.course.teacher.user.id = :teacherUserId)
-              and (:studyYear is null or enrollment.student.studyYear = :studyYear)
-              and (
-                    :query = ''
-                    or lower(enrollment.student.studentNumber) like :query
-                    or lower(enrollment.student.user.email) like :query
-                    or lower(enrollment.student.user.firstName) like :query
-                    or lower(enrollment.student.user.lastName) like :query
-                  )
-            """)
+    @Query(
+            value = """
+                    select enrollment
+                    from Enrollment enrollment
+                    where (:courseId is null or enrollment.course.id = :courseId)
+                      and (:teacherUserId is null or enrollment.course.teacher.user.id = :teacherUserId)
+                      and (:studyYear is null or enrollment.student.studyYear = :studyYear)
+                      and (
+                            :query = ''
+                            or lower(enrollment.student.studentNumber) like :query
+                            or lower(enrollment.student.user.email) like :query
+                            or lower(enrollment.student.user.firstName) like :query
+                            or lower(enrollment.student.user.lastName) like :query
+                          )
+                    order by
+                      lower(enrollment.course.code),
+                      case
+                        when function(
+                                'regexp_replace',
+                                enrollment.student.studentNumber,
+                                '[^0-9]',
+                                '',
+                                'g'
+                        ) = '' then 1
+                        else 0
+                      end,
+                      length(function(
+                              'regexp_replace',
+                              function(
+                                      'regexp_replace',
+                                      enrollment.student.studentNumber,
+                                      '[^0-9]',
+                                      '',
+                                      'g'
+                              ),
+                              '^0+',
+                              '',
+                              'g'
+                      )),
+                      function(
+                              'regexp_replace',
+                              function(
+                                      'regexp_replace',
+                                      enrollment.student.studentNumber,
+                                      '[^0-9]',
+                                      '',
+                                      'g'
+                              ),
+                              '^0+',
+                              '',
+                              'g'
+                      ),
+                      lower(enrollment.student.studentNumber),
+                      enrollment.id
+                    """,
+            countQuery = """
+                    select count(enrollment)
+                    from Enrollment enrollment
+                    where (:courseId is null or enrollment.course.id = :courseId)
+                      and (:teacherUserId is null or enrollment.course.teacher.user.id = :teacherUserId)
+                      and (:studyYear is null or enrollment.student.studyYear = :studyYear)
+                      and (
+                            :query = ''
+                            or lower(enrollment.student.studentNumber) like :query
+                            or lower(enrollment.student.user.email) like :query
+                            or lower(enrollment.student.user.firstName) like :query
+                            or lower(enrollment.student.user.lastName) like :query
+                          )
+                    """
+    )
     Page<Enrollment> searchForStudentAttendanceReport(
             @Param("courseId") UUID courseId,
             @Param("teacherUserId") UUID teacherUserId,
