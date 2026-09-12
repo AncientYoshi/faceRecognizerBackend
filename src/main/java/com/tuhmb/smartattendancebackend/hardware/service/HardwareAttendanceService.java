@@ -202,9 +202,7 @@ public class HardwareAttendanceService {
             throw new ConflictException("Attendance session does not match the hardware device course binding");
         }
         if (device.room() != null) {
-            String sessionRoom = session.getTimetableEntry() == null
-                    ? null
-                    : session.getTimetableEntry().getRoom();
+            String sessionRoom = session.getRoom();
             if (sessionRoom == null || !device.room().trim().equalsIgnoreCase(sessionRoom.trim())) {
                 throw new ConflictException("Attendance session does not match the hardware device room binding");
             }

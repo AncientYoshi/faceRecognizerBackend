@@ -5,6 +5,7 @@ import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSessionStatu
 import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.notification.service.AttendanceSessionReminderPublisher;
 import com.tuhmb.smartattendancebackend.timetable.domain.TimetableEntry;
+import com.tuhmb.smartattendancebackend.timetable.service.CourseSchedulePolicy;
 import com.tuhmb.smartattendancebackend.timetable.repository.TimetableRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,17 +29,20 @@ public class AttendanceSessionAutomationService {
     private final AttendanceSessionReminderPublisher reminderPublisher;
     private final ZoneId zoneId;
     private final boolean enabled;
+    private final CourseSchedulePolicy schedulePolicy;
 
     public AttendanceSessionAutomationService(
             TimetableRepository timetableRepository,
             AttendanceSessionRepository sessionRepository,
             AttendanceSessionReminderPublisher reminderPublisher,
+            CourseSchedulePolicy schedulePolicy,
             @Value("${app.time-zone:Asia/Yangon}") String timeZone,
             @Value("${app.attendance.automation.enabled:true}") boolean enabled
     ) {
         this.timetableRepository = timetableRepository;
         this.sessionRepository = sessionRepository;
         this.reminderPublisher = reminderPublisher;
+        this.schedulePolicy = schedulePolicy;
         this.zoneId = ZoneId.of(timeZone);
         this.enabled = enabled;
     }
@@ -78,6 +82,8 @@ public class AttendanceSessionAutomationService {
     }
 
     private void materializeTimetableSession(TimetableEntry entry, LocalDate date, Instant now) {
+        schedulePolicy.lockCourse(entry.getCourse().getId());
+        if (schedulePolicy.isCancelled(entry.getCourse().getId(), date)) return;
         Instant start = date.atTime(entry.getStartTime()).atZone(zoneId).toInstant();
         Instant end = date.atTime(entry.getEndTime()).atZone(zoneId).toInstant();
         AttendanceSession existing = sessionRepository
@@ -130,6 +136,13 @@ public class AttendanceSessionAutomationService {
                 now
         );
         for (AttendanceSession session : sessions) {
+            schedulePolicy.lockCourse(session.getCourse().getId());
+            schedulePolicy.refresh(session);
+            if (session.getStatus() != AttendanceSessionStatus.SCHEDULED) continue;
+            if (schedulePolicy.isCancelled(session.getCourse().getId(), session.getSessionDate())) {
+                session.cancel();
+                continue;
+            }
             session.start();
             if (!now.isBefore(session.getEndTime())) {
                 session.close();
@@ -147,6 +160,9 @@ public class AttendanceSessionAutomationService {
                 now
         );
         for (AttendanceSession session : sessions) {
+            schedulePolicy.lockCourse(session.getCourse().getId());
+            schedulePolicy.refresh(session);
+            if (session.getStatus() != AttendanceSessionStatus.ACTIVE) continue;
             session.close();
             log.info("Automatically closed attendance session {}", session.getId());
         }

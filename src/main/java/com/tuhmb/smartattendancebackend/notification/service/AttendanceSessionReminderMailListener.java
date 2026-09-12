@@ -1,6 +1,8 @@
 package com.tuhmb.smartattendancebackend.notification.service;
 
 import com.tuhmb.smartattendancebackend.notification.config.MailNotificationProperties;
+import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSessionStatus;
+import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.notification.event.AttendanceReminderRecipient;
 import com.tuhmb.smartattendancebackend.notification.event.AttendanceSessionStartedEvent;
 import org.slf4j.Logger;
@@ -27,14 +29,17 @@ public class AttendanceSessionReminderMailListener {
     private final JavaMailSender mailSender;
     private final MailNotificationProperties properties;
     private final ZoneId zoneId;
+    private final AttendanceSessionRepository sessions;
 
     public AttendanceSessionReminderMailListener(
             JavaMailSender mailSender,
             MailNotificationProperties properties,
+            AttendanceSessionRepository sessions,
             @org.springframework.beans.factory.annotation.Value("${app.time-zone:Asia/Yangon}") String timeZone
     ) {
         this.mailSender = mailSender;
         this.properties = properties;
+        this.sessions = sessions;
         this.zoneId = ZoneId.of(timeZone);
     }
 
@@ -43,6 +48,8 @@ public class AttendanceSessionReminderMailListener {
     public void sendReminders(AttendanceSessionStartedEvent event) {
         int sent = 0;
         for (AttendanceReminderRecipient recipient : event.recipients()) {
+            // A reminder may have been queued before the teacher cancelled the class.
+            if (!sessions.existsByIdAndStatus(event.sessionId(), AttendanceSessionStatus.ACTIVE)) break;
             try {
                 mailSender.send(message(event, recipient));
                 sent++;

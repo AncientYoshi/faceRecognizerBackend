@@ -12,20 +12,22 @@
 const char* WIFI_SSID = "Redmi Note 10";
 const char* WIFI_PASSWORD = "arkarlay";
 
-const char* SERVER_HOST = "smart-attendance-api.duckdns.org";
+const char* SERVER_HOST = "api.tuhmbattendance.com";
 const uint16_t SERVER_PORT = 443;
 const bool RUN_TLS_DIAGNOSTICS = false;
 
-// Nginx supports HTTP/1.1; explicitly advertise it during TLS negotiation.
+// Advertise HTTP/1.1 when connecting through Cloudflare.
 static const char* TLS_ALPN_PROTOCOLS[] = {"http/1.1", nullptr};
 
 // Must match a device registered in Spring Boot /hardware-devices.
 const char* DEVICE_ID = "ROOM101";
 const char* DEVICE_KEY = "hyNmRusYfNvnJ6qTD_6n3nFLdHr3wWj-Qke_u2WOvgE";
 
-// Let's Encrypt ISRG Root X1 trust anchor.
-// Keep this certificate block unchanged.
-static const char ISRG_ROOT_X1[] PROGMEM = R"CERT(
+// Trust Let's Encrypt ISRG Root X1 and Google Trust Services GTS Root R4.
+// GTS Root R4 source: https://pki.goog/repo/certs/gtsr4.pem
+// Cloudflare currently serves a WE1 chain to GTS Root R4 (checked 2026-09-06).
+// Refresh these roots if Cloudflare changes its certificate authority.
+static const char API_TRUSTED_ROOTS[] PROGMEM = R"CERT(
 -----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
@@ -56,6 +58,19 @@ oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
 4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
 mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
 emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
+VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
+A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
+WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz
+IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi
+AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi
+QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR
+HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW
+BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D
+9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8
+p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
 -----END CERTIFICATE-----
 )CERT";
 
@@ -421,8 +436,8 @@ AttendanceResult sendImage(camera_fb_t* frame) {
 
   WiFiClientSecure client;
 
-  // Diagnostic only. Restore setCACert after resolving the issue.
-  client.setInsecure();
+  // Verify the server certificate and hostname before sending device credentials.
+  client.setCACert(API_TRUSTED_ROOTS);
   client.setAlpnProtocols(TLS_ALPN_PROTOCOLS);
   client.setHandshakeTimeout(30);
   client.setTimeout(15000);

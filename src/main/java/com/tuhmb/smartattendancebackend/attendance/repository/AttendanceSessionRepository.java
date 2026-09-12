@@ -19,6 +19,10 @@ public interface AttendanceSessionRepository
 
     long countByCourseId(UUID courseId);
 
+    List<AttendanceSession> findByCourseIdAndSessionDateGreaterThanEqual(UUID courseId, LocalDate date);
+
+    boolean existsByIdAndStatus(UUID id, AttendanceSessionStatus status);
+
     Optional<AttendanceSession> findByIdempotencyKey(UUID idempotencyKey);
 
     Optional<AttendanceSession> findByTimetableEntryIdAndSessionDate(UUID timetableEntryId, LocalDate sessionDate);
@@ -62,11 +66,11 @@ public interface AttendanceSessionRepository
     @Query("""
             select session
             from AttendanceSession session
-            join session.timetableEntry timetable
+            left join session.timetableEntry timetable
             where session.status = :status
               and session.startTime <= :now
               and session.endTime >= :now
-              and lower(trim(timetable.room)) = lower(trim(:room))
+              and lower(trim(coalesce(session.room, timetable.room))) = lower(trim(:room))
             order by session.startTime asc
             """)
     List<AttendanceSession> findActiveForRoom(
@@ -79,12 +83,12 @@ public interface AttendanceSessionRepository
     @Query("""
             select session
             from AttendanceSession session
-            join session.timetableEntry timetable
+            left join session.timetableEntry timetable
             where session.status = :status
               and session.startTime <= :now
               and session.endTime >= :now
               and session.course.id = :courseId
-              and lower(trim(timetable.room)) = lower(trim(:room))
+              and lower(trim(coalesce(session.room, timetable.room))) = lower(trim(:room))
             order by session.startTime asc
             """)
     List<AttendanceSession> findActiveForCourseAndRoom(

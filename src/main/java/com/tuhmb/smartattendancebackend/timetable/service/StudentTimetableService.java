@@ -26,14 +26,17 @@ public class StudentTimetableService {
     private final TimetableRepository timetableRepository;
     private final StudentRepository studentRepository;
     private final ZoneId zoneId;
+    private final CourseSchedulePolicy schedulePolicy;
 
     public StudentTimetableService(
             TimetableRepository timetableRepository,
             StudentRepository studentRepository,
+            CourseSchedulePolicy schedulePolicy,
             @Value("${app.time-zone:Asia/Yangon}") String timeZone
     ) {
         this.timetableRepository = timetableRepository;
         this.studentRepository = studentRepository;
+        this.schedulePolicy = schedulePolicy;
         this.zoneId = ZoneId.of(timeZone);
     }
 
@@ -50,6 +53,7 @@ public class StudentTimetableService {
                 .findStudentEntriesForWeek(student.getId(), weekStart, weekEnd)
                 .stream()
                 .filter(entry -> isEffectiveOn(entry, occurrenceDate(entry, weekStart)))
+                .filter(entry -> !schedulePolicy.isCancelled(entry.getCourse().getId(), occurrenceDate(entry, weekStart)))
                 .map(entry -> toStudentResponse(entry, occurrenceDate(entry, weekStart), today))
                 .toList();
 

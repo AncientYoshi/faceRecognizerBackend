@@ -47,7 +47,22 @@ Administrator device-management endpoints:
 - `PUT /hardware-devices/{id}` — set `newDeviceKey` to rotate the secret, or `null` to keep it
 - `DELETE /hardware-devices/{id}`
 
-`room` must exactly correspond to the timetable room (comparison ignores case and surrounding spaces). A course-only binding is useful for a movable course camera. Setting both is safest because both must match. If no session matches, or more than one session matches, Spring returns `409` and records nothing.
+`room` must correspond to the attendance session room (comparison ignores case and surrounding spaces). A session uses its explicit `room`, or the linked timetable room when no explicit room is assigned. A course-only binding is useful for a movable course camera. Setting both requires both to match. If no session matches, or more than one session matches, Spring returns `409` and records nothing.
+
+For a camera shared by courses in one room, select **No course restriction** (`courseId: null`) and enter the physical room in the device settings. In **Create session**, enter the same room. Manual `POST /attendance-sessions` and scheduled-session `PUT /attendance-sessions/{id}` accept an optional `room` (up to 100 characters), for example:
+
+```json
+{
+  "courseId": "YOUR_COURSE_UUID",
+  "sessionDate": "2026-09-12",
+  "startTime": "2026-09-12T06:00:00Z",
+  "endTime": "2026-09-12T07:00:00Z",
+  "rollCallCount": 1,
+  "room": "Automation Lab"
+}
+```
+
+The device discovers that session while it is `ACTIVE` and within its start/end times. An old manual session without a room cannot match a room-bound device: edit it while scheduled, or close it and create a new session with the correct room. A device ID such as `ROOM101` does not automatically populate its room. Two active sessions in the same room remain ambiguous; close one or add a course restriction. No ESP32 firmware change is required for this behavior.
 
 Test the deployed Spring API before flashing the ESP32:
 

@@ -26,7 +26,7 @@ public record HardwareActiveSessionResponse(
                 session.getCourse().getId(),
                 session.getCourse().getCode(),
                 session.getCourse().getName(),
-                session.getTimetableEntry() == null ? null : session.getTimetableEntry().getRoom(),
+                session.getRoom(),
                 session.getSessionDate(),
                 session.getStartTime(),
                 session.getEndTime(),

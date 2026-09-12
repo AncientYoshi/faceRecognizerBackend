@@ -293,9 +293,31 @@ Only the assigned course teacher or an administrator can create or mutate sessio
 ```text
 SCHEDULED -> ACTIVE -> CLOSED
 SCHEDULED -> CANCELLED
+ACTIVE -> CANCELLED
 ```
 
 Only a `SCHEDULED` session can be edited or deleted.
+
+### Cancel a course's attendance schedules
+
+Teachers can cancel only their assigned courses; administrators can cancel any course.
+
+- `GET /courses/{courseId}/schedule-cancellations` returns `today`, `timeZone`, and saved `cancellations`.
+- `POST /courses/{courseId}/schedule-cancellations` accepts either request below. The reason is required (maximum 500 characters).
+
+```json
+{"scope":"TODAY","reason":"Teacher unavailable"}
+```
+
+```json
+{"scope":"FUTURE","fromDate":"2026-09-10","reason":"Course attendance completed"}
+```
+
+`TODAY` uses the server's `APP_TIME_ZONE`, not the browser date. `FUTURE` requires today or a later start date, includes that date, and has no end date. The response contains `cancellation` (id, fromDate, toDate, reason, createdAt) and `cancelledSessions`. A null `toDate` means all dates onwards. Repeating the same course/date range reuses the existing rule.
+
+Scheduled and active sessions in the range become `CANCELLED`; closed sessions and recorded evidence remain intact. Cancelled sessions are excluded from attendance-percentage calculations. Migration V11 stores the cancellation even when no sessions exist yet, so automation cannot recreate them. Manual creation, rescheduling and starting also respect cancellation rules, and cancelled occurrences are omitted from student timetables. Recurring timetable templates are retained; changing a template does not remove a cancellation rule. There is currently no restore endpoint.
+
+Queued start reminders stop when a session is no longer active. Already sent messages cannot be recalled. Deploy the backend (including V11) before deploying the frontend cancellation controls.
 
 ### Automatic timetable sessions
 
@@ -335,10 +357,12 @@ MAIL_FROM=no-reply@example.com
 MAIL_SMTP_AUTH=true
 MAIL_STARTTLS_ENABLED=true
 MAIL_STARTTLS_REQUIRED=true
-FRONTEND_BASE_URL=https://smart-attendance.paiswanpyae2002.workers.dev
+FRONTEND_BASE_URL=https://tuhmbattendance.com
 ```
 
 For Gmail SMTP, use `smtp.gmail.com`, port `587`, and a Google App Password rather than the account's normal password. Keep SMTP credentials only in the server environment file. Notifications default to disabled when `MAIL_NOTIFICATIONS_ENABLED` is missing or false.
+
+The attendance link uses `FRONTEND_BASE_URL` on the running backend, not the frontend's API URL. The public login page is `https://tuhmbattendance.com/login`, but configure only the origin `https://tuhmbattendance.com` (without `/login` or `/student/scan`). Reminder links then use `https://tuhmbattendance.com/student/scan/{sessionId}`. Update any existing deployment environment variable pointing at the old Workers domain, then restart/redeploy the backend; an environment override takes precedence over the application default. For local email testing, override this with `http://localhost:4200`. `MAIL_FROM` controls the requested sender address separately and is unchanged. Existing emails retain their original links and sender.
 
 ## Face registration and attendance verification
 

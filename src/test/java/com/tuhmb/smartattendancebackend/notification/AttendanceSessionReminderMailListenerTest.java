@@ -1,6 +1,8 @@
 package com.tuhmb.smartattendancebackend.notification;
 
 import com.tuhmb.smartattendancebackend.notification.config.MailNotificationProperties;
+import com.tuhmb.smartattendancebackend.attendance.domain.AttendanceSessionStatus;
+import com.tuhmb.smartattendancebackend.attendance.repository.AttendanceSessionRepository;
 import com.tuhmb.smartattendancebackend.notification.event.AttendanceReminderRecipient;
 import com.tuhmb.smartattendancebackend.notification.event.AttendanceSessionStartedEvent;
 import com.tuhmb.smartattendancebackend.notification.service.AttendanceSessionReminderMailListener;
@@ -16,20 +18,24 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
 class AttendanceSessionReminderMailListenerTest {
 
     @Test
     void sendsAnIndividualFaceVerificationReminderToEveryRecipient() {
         RecordingMailSender mailSender = new RecordingMailSender();
+        var sessions = mock(AttendanceSessionRepository.class);
+        when(sessions.existsByIdAndStatus(any(), eq(AttendanceSessionStatus.ACTIVE))).thenReturn(true);
         AttendanceSessionReminderMailListener listener = new AttendanceSessionReminderMailListener(
                 mailSender,
                 new MailNotificationProperties(
                         true,
                         "no-reply@example.com",
-                        "https://frontend.example.com/"
+                        "https://tuhmbattendance.com/"
                 ),
-                "Asia/Yangon"
+                sessions, "Asia/Yangon"
         );
         UUID sessionId = UUID.randomUUID();
         AttendanceSessionStartedEvent event = new AttendanceSessionStartedEvent(
@@ -57,7 +63,8 @@ class AttendanceSessionReminderMailListenerTest {
             assertThat(message.getText())
                     .contains("Artificial Intelligence")
                     .contains("Grace Teacher")
-                    .contains("https://frontend.example.com/student/scan/" + sessionId);
+                    .contains("https://tuhmbattendance.com/student/scan/" + sessionId)
+                    .doesNotContain("workers.dev", "/login/student/scan/");
         });
     }
 

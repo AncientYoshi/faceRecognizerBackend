@@ -21,7 +21,8 @@ public record AttendanceSessionResponse(
         int rollCallCount,
         String status,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        String room
 ) {
     public static AttendanceSessionResponse from(AttendanceSession session) {
         return new AttendanceSessionResponse(
@@ -41,7 +42,8 @@ public record AttendanceSessionResponse(
                 session.getRollCallCount(),
                 session.getStatus().name(),
                 session.getCreatedAt(),
-                session.getUpdatedAt()
+                session.getUpdatedAt(),
+                session.getRoom()
         );
     }
 }

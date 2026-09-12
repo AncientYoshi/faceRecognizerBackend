@@ -34,6 +34,9 @@ public class AttendanceSession extends BaseEntity {
     @JoinColumn(name = "timetable_entry_id")
     private TimetableEntry timetableEntry;
 
+    @Column(length = 100)
+    private String room;
+
     @Column(name = "session_date", nullable = false)
     private LocalDate sessionDate;
 
@@ -115,7 +118,10 @@ public class AttendanceSession extends BaseEntity {
     }
 
     public void cancel() {
-        requireStatus(AttendanceSessionStatus.SCHEDULED, "Only a scheduled session can be cancelled");
+        if (status == AttendanceSessionStatus.CANCELLED) return;
+        if (status != AttendanceSessionStatus.SCHEDULED && status != AttendanceSessionStatus.ACTIVE) {
+            throw new ConflictException("Only a scheduled or active session can be cancelled");
+        }
         status = AttendanceSessionStatus.CANCELLED;
     }
 
@@ -135,6 +141,25 @@ public class AttendanceSession extends BaseEntity {
 
     public TimetableEntry getTimetableEntry() {
         return timetableEntry;
+    }
+
+    public void assignRoom(String room) {
+        if (status != AttendanceSessionStatus.SCHEDULED) {
+            throw new ConflictException("Only scheduled attendance sessions can change room");
+        }
+        this.room = normalizeRoom(room);
+    }
+
+    public static String normalizeRoom(String room) {
+        return room == null || room.isBlank() ? null : room.trim();
+    }
+
+    public String getRoom() {
+        return room != null ? room : timetableEntry == null ? null : timetableEntry.getRoom();
+    }
+
+    public String getAssignedRoom() {
+        return room;
     }
 
     public LocalDate getSessionDate() {

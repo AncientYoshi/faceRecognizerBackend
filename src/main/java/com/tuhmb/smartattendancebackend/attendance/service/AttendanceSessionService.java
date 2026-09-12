@@ -14,6 +14,7 @@ import com.tuhmb.smartattendancebackend.common.api.PageResponse;
 import com.tuhmb.smartattendancebackend.common.exception.ConflictException;
 import com.tuhmb.smartattendancebackend.common.exception.ResourceNotFoundException;
 import com.tuhmb.smartattendancebackend.notification.service.AttendanceSessionReminderPublisher;
+import com.tuhmb.smartattendancebackend.timetable.service.CourseSchedulePolicy;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -27,6 +28,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Objects;
 
 @Service
 public class AttendanceSessionService {
@@ -36,19 +38,22 @@ public class AttendanceSessionService {
     private final AcademicAccessService accessService;
     private final AuditService auditService;
     private final AttendanceSessionReminderPublisher reminderPublisher;
+    private final CourseSchedulePolicy schedulePolicy;
 
     public AttendanceSessionService(
             AttendanceSessionRepository sessionRepository,
             CourseService courseService,
             AcademicAccessService accessService,
             AuditService auditService,
-            AttendanceSessionReminderPublisher reminderPublisher
+            AttendanceSessionReminderPublisher reminderPublisher,
+            CourseSchedulePolicy schedulePolicy
     ) {
         this.sessionRepository = sessionRepository;
         this.courseService = courseService;
         this.accessService = accessService;
         this.auditService = auditService;
         this.reminderPublisher = reminderPublisher;
+        this.schedulePolicy = schedulePolicy;
     }
 
     @Transactional(readOnly = true)
@@ -94,8 +99,9 @@ public class AttendanceSessionService {
             UUID idempotencyKey,
             Jwt jwt
     ) {
-        Course course = courseService.findCourse(request.courseId());
+        Course course = schedulePolicy.lockCourse(request.courseId());
         accessService.requireCourseTeacherOrAdmin(course, jwt);
+        schedulePolicy.requireOpen(course.getId(), request.sessionDate());
         if (idempotencyKey != null) {
             AttendanceSession existing = sessionRepository.findByIdempotencyKey(idempotencyKey).orElse(null);
             if (existing != null) {
@@ -114,13 +120,14 @@ public class AttendanceSessionService {
                 request.rollCallCount()
         );
         session.assignIdempotencyKey(idempotencyKey);
+        session.assignRoom(request.room());
         return AttendanceSessionResponse.from(sessionRepository.saveAndFlush(session));
     }
 
     @Transactional
     public AttendanceSessionResponse update(UUID id, AttendanceSessionRequest request, Jwt jwt) {
-        AttendanceSession session = findSession(id);
-        accessService.requireCourseTeacherOrAdmin(session.getCourse(), jwt);
+        AttendanceSession session = findAuthorizedSession(id, jwt);
+        schedulePolicy.requireOpen(session.getCourse().getId(), request.sessionDate());
         if (!session.getCourse().getId().equals(request.courseId())) {
             throw new ConflictException("An attendance session cannot be moved to another course");
         }
@@ -130,6 +137,7 @@ public class AttendanceSessionService {
         session.updateSchedule(
                 request.sessionDate(), request.startTime(), request.endTime(), request.rollCallCount()
         );
+        session.assignRoom(request.room());
         auditService.record(AuditAction.UPDATE, "AttendanceSession", id, "Attendance session updated");
         return AttendanceSessionResponse.from(session);
     }
@@ -137,6 +145,7 @@ public class AttendanceSessionService {
     @Transactional
     public AttendanceSessionResponse start(UUID id, Jwt jwt) {
         AttendanceSession session = findAuthorizedSession(id, jwt);
+        schedulePolicy.requireOpen(session.getCourse().getId(), session.getSessionDate());
         session.start();
         reminderPublisher.publish(session);
         return AttendanceSessionResponse.from(session);
@@ -153,6 +162,7 @@ public class AttendanceSessionService {
     public AttendanceSessionResponse cancel(UUID id, Jwt jwt) {
         AttendanceSession session = findAuthorizedSession(id, jwt);
         session.cancel();
+        auditService.record(AuditAction.UPDATE, "AttendanceSession", id, "Attendance session cancelled");
         return AttendanceSessionResponse.from(session);
     }
 
@@ -168,6 +178,8 @@ public class AttendanceSessionService {
 
     private AttendanceSession findAuthorizedSession(UUID id, Jwt jwt) {
         AttendanceSession session = findSession(id);
+        schedulePolicy.lockCourse(session.getCourse().getId());
+        schedulePolicy.refresh(session);
         accessService.requireCourseTeacherOrAdmin(session.getCourse(), jwt);
         return session;
     }
@@ -208,7 +220,8 @@ public class AttendanceSessionService {
                 && existing.getSessionDate().equals(request.sessionDate())
                 && existing.getStartTime().equals(request.startTime())
                 && existing.getEndTime().equals(request.endTime())
-                && existing.getRollCallCount() == request.rollCallCount();
+                && existing.getRollCallCount() == request.rollCallCount()
+                && Objects.equals(existing.getAssignedRoom(), AttendanceSession.normalizeRoom(request.room()));
         if (!sameRequest) {
             throw new ConflictException("Idempotency-Key was already used for a different request");
         }

@@ -849,6 +849,39 @@
       "description": "These requests intentionally change or remove state and should be run individually when appropriate, not as part of the main setup flow.",
       "item": [
         {
+          "name": "Get Course Schedule Cancellations (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/courses/{{courseId}}/schedule-cancellations",
+            "description": "Returns server today, timeZone and cancellation history. Only the assigned teacher or an administrator may access this course."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["if (pm.response.code === 200) pm.collectionVariables.set('cancellationFromDate', pm.response.json().today);"] } }]
+        },
+        {
+          "name": "Cancel Today for Course (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"scope\": \"TODAY\",\n  \"reason\": \"Teacher unavailable\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/courses/{{courseId}}/schedule-cancellations",
+            "description": "Cancels scheduled and active sessions today using the server timezone, including sessions not yet generated. Completed sessions remain."
+          }
+        },
+        {
+          "name": "Cancel Future Dates for Course (Teacher)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{teacherAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"scope\": \"FUTURE\",\n  \"fromDate\": \"{{cancellationFromDate}}\",\n  \"reason\": \"Course attendance completed\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/courses/{{courseId}}/schedule-cancellations",
+            "description": "Run Get Course Schedule Cancellations first, then set cancellationFromDate to the intended date (today or later). Cancels all dates from that date inclusively, indefinitely. No restore endpoint exists."
+          }
+        },
+        {
           "name": "Logout Admin",
           "request": {
             "auth": { "type": "noauth" },
@@ -863,7 +896,7 @@
           "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}/close" }
         },
         {
-          "name": "Cancel Scheduled Session",
+          "name": "Cancel Scheduled or Active Session",
           "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/attendance-sessions/{{sessionId}}/cancel" }
         },
         {
