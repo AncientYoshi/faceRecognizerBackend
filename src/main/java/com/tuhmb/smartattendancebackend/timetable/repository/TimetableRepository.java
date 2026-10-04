@@ -97,12 +97,12 @@ public interface TimetableRepository
               AND timetable.active = TRUE
               AND (:excludedId IS NULL OR timetable.id <> :excludedId)
               AND (
-                    :effectiveTo IS NULL
+                    CAST(:effectiveTo AS LocalDate) IS NULL
                     OR timetable.effectiveFrom IS NULL
                     OR timetable.effectiveFrom <= :effectiveTo
                   )
               AND (
-                    :effectiveFrom IS NULL
+                    CAST(:effectiveFrom AS LocalDate) IS NULL
                     OR timetable.effectiveTo IS NULL
                     OR timetable.effectiveTo >= :effectiveFrom
                   )
@@ -128,13 +128,13 @@ public interface TimetableRepository
                 cast(:effectiveTo as LocalDate) IS NULL
                 OR timetable.effectiveFrom IS NULL
                 OR timetable.effectiveFrom
-                    <= cast(:effectiveTo as LocalDate)
+                    <= :effectiveTo
               )
           AND (
                 cast(:effectiveFrom as LocalDate) IS NULL
                 OR timetable.effectiveTo IS NULL
                 OR timetable.effectiveTo
-                    >= cast(:effectiveFrom as LocalDate)
+                    >= :effectiveFrom
               )
         """)
     long countCourseConflicts(
@@ -156,12 +156,12 @@ public interface TimetableRepository
               AND timetable.startTime < :endTime
               AND timetable.endTime > :startTime
               AND (
-                    :effectiveTo IS NULL
+                    CAST(:effectiveTo AS LocalDate) IS NULL
                     OR timetable.effectiveFrom IS NULL
                     OR timetable.effectiveFrom <= :effectiveTo
                   )
               AND (
-                    :effectiveFrom IS NULL
+                    CAST(:effectiveFrom AS LocalDate) IS NULL
                     OR timetable.effectiveTo IS NULL
                     OR timetable.effectiveTo >= :effectiveFrom
                   )
@@ -188,13 +188,13 @@ public interface TimetableRepository
                 CAST(:effectiveTo AS LocalDate) IS NULL
                 OR timetable.effectiveFrom IS NULL
                 OR timetable.effectiveFrom
-                    <= CAST(:effectiveTo AS LocalDate)
+                    <= :effectiveTo
               )
           AND (
                 CAST(:effectiveFrom AS LocalDate) IS NULL
                 OR timetable.effectiveTo IS NULL
                 OR timetable.effectiveTo
-                    >= CAST(:effectiveFrom AS LocalDate)
+                    >= :effectiveFrom
               )
         """)
     long countRoomConflicts(
@@ -219,13 +219,13 @@ public interface TimetableRepository
                 CAST(:effectiveTo AS LocalDate) IS NULL
                 OR timetable.effectiveFrom IS NULL
                 OR timetable.effectiveFrom
-                    <= CAST(:effectiveTo AS LocalDate)
+                    <= :effectiveTo
               )
           AND (
                 CAST(:effectiveFrom AS LocalDate) IS NULL
                 OR timetable.effectiveTo IS NULL
                 OR timetable.effectiveTo
-                    >= CAST(:effectiveFrom AS LocalDate)
+                    >= :effectiveFrom
               )
         """)
     long countRoomConflictsExcluding(
